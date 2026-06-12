@@ -1,4 +1,4 @@
-# @sgnl-actions/action-sandbox
+# SGNL Action Sandbox
 
 SGNL action sandbox. Executes bundled actions inside a Deno sandbox with production-equivalent permission flags (`--deny-net --deny-run --deny-env`), using a mock sandbox host to handle `fetch`, `signJWT`, and LDAP calls.
 

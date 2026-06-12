@@ -28,5 +28,14 @@
     "sandbox",
     "action-sandbox"
   ],
-  "license": "MIT"
+  "author": "SGNL Engineering",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/sgnl-actions/action-sandbox.git"
+  },
+  "homepage": "https://github.com/sgnl-actions/action-sandbox#readme",
+  "bugs": {
+    "url": "https://github.com/sgnl-actions/action-sandbox/issues"
+  }
 }
