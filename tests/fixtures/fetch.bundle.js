@@ -1,0 +1,1 @@
+"use strict";var e={invoke:async(e,o)=>{const{url:r,method:m}=e;if(!r)throw new Error("Missing required parameter: url");const res=await fetch(r,{method:m||"GET"});const body=await res.text();return{status:res.status,body:body}},error:async()=>{return{status:"error_handled"}},halt:async()=>{return undefined}};module.exports=e;

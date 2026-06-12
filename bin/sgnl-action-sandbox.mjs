@@ -1,8 +1,12 @@
 #!/usr/bin/env node
 
 import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { resolve, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { runAction } from '../src/index.mjs';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const pkg = JSON.parse(readFileSync(resolve(__dirname, '../package.json'), 'utf8'));
 
 function usage() {
   console.error(`Usage: sgnl-action-sandbox <bundle-path> [options]
@@ -14,6 +18,7 @@ Options:
   --handler       Handler to invoke: invoke|error|halt (default: invoke)
   --timeout       Timeout in milliseconds (default: 30000)
   --verbose, -v   Show action logs (Deno stderr output)
+  --version       Show version
   --help, -h      Show this help message
 `);
   process.exit(1);
@@ -38,6 +43,11 @@ const args = process.argv.slice(2);
 
 if (args.length === 0 || args.includes('--help') || args.includes('-h')) {
   usage();
+}
+
+if (args.includes('--version')) {
+  console.log(pkg.version);
+  process.exit(0);
 }
 
 let bundle = null;

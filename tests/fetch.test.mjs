@@ -1,8 +1,47 @@
-import { describe, it } from 'node:test';
+import { describe, it, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { handleFetch } from '../src/handlers/fetch.mjs';
+import { createServer } from 'node:http';
+
+let server;
+let baseUrl;
 
 describe('fetch handler', () => {
+  before(async () => {
+    server = createServer((req, res) => {
+      if (req.url === '/status/404') {
+        res.writeHead(404);
+        res.end('Not Found');
+        return;
+      }
+
+      let body = '';
+      req.on('data', (chunk) => { body += chunk; });
+      req.on('end', () => {
+        const response = JSON.stringify({
+          method: req.method,
+          url: req.url,
+          headers: req.headers,
+          body: body || undefined,
+        });
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(response);
+      });
+    });
+
+    await new Promise((resolve) => {
+      server.listen(0, '127.0.0.1', () => {
+        const { port } = server.address();
+        baseUrl = `http://127.0.0.1:${port}`;
+        resolve();
+      });
+    });
+  });
+
+  after(() => {
+    server.close();
+  });
+
   it('returns error when url is missing', async () => {
     const result = await handleFetch({});
     assert.deepEqual(result, {
@@ -10,18 +49,19 @@ describe('fetch handler', () => {
     });
   });
 
-  it('makes a real GET request', async () => {
+  it('makes a GET request', async () => {
     const result = await handleFetch({
-      url: 'https://httpbin.org/get',
+      url: `${baseUrl}/get`,
       method: 'GET',
     });
 
     assert.equal(result.status, 200);
     assert.ok(result.headers);
-    assert.ok(result.body); // base64 encoded
+    assert.ok(result.body);
 
     const body = JSON.parse(Buffer.from(result.body, 'base64').toString());
-    assert.equal(body.url, 'https://httpbin.org/get');
+    assert.equal(body.method, 'GET');
+    assert.equal(body.url, '/get');
   });
 
   it('makes a POST request with body', async () => {
@@ -29,7 +69,7 @@ describe('fetch handler', () => {
     const bodyB64 = Buffer.from(payload).toString('base64');
 
     const result = await handleFetch({
-      url: 'https://httpbin.org/post',
+      url: `${baseUrl}/post`,
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: bodyB64,
@@ -37,12 +77,13 @@ describe('fetch handler', () => {
 
     assert.equal(result.status, 200);
     const body = JSON.parse(Buffer.from(result.body, 'base64').toString());
-    assert.equal(body.json.hello, 'world');
+    assert.equal(body.method, 'POST');
+    assert.equal(body.body, payload);
   });
 
   it('returns non-200 status codes without throwing', async () => {
     const result = await handleFetch({
-      url: 'https://httpbin.org/status/404',
+      url: `${baseUrl}/status/404`,
       method: 'GET',
     });
 

@@ -5,16 +5,27 @@ import { fileURLToPath } from 'node:url';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const shimPath = resolve(__dirname, '../shim/shim.js');
 
+const MIN_DENO_MAJOR = 2;
+
 /**
- * Check if deno is available on PATH.
+ * Check if deno is available on PATH and meets minimum version.
  */
 function checkDeno() {
+  let output;
   try {
-    execFileSync('deno', ['--version'], { stdio: 'pipe' });
+    output = execFileSync('deno', ['--version'], { stdio: 'pipe', encoding: 'utf8' });
   } catch {
     throw new Error(
       'deno is not installed or not on PATH.\n' +
       'Install Deno: https://deno.land/#installation'
+    );
+  }
+
+  const match = output.match(/deno (\d+)\./);
+  if (match && parseInt(match[1], 10) < MIN_DENO_MAJOR) {
+    throw new Error(
+      `Deno ${MIN_DENO_MAJOR}.x or higher is required (found: ${output.split('\n')[0].trim()}).\n` +
+      'Update Deno: https://deno.land/#installation'
     );
   }
 }
