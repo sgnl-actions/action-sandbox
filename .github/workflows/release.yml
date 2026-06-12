@@ -18,7 +18,7 @@ jobs:
 
   release:
     needs: ci
-    uses: sgnl-actions/.github/.github/workflows/release.yml@b638fbaf3d0a7f9b7ef553b82b996e9766383f00 # v1.0.0
+    uses: sgnl-actions/.github/.github/workflows/release.yml@30e8bcb7c4c7543d249f6fde73eb8b38901899f2 # v1.2.0
     with:
       bump: ${{ inputs.bump }}
     permissions:
