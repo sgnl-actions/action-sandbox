@@ -1,10 +1,10 @@
 {
-  "name": "@sgnl-actions/dev-runner",
+  "name": "@sgnl-actions/action-sandbox",
   "version": "0.1.0",
-  "description": "Local dev runner for SGNL actions — runs bundles in a Deno sandbox with mock host",
+  "description": "SGNL action sandbox — runs bundles in a Deno sandbox with mock host",
   "type": "module",
   "bin": {
-    "sgnl-dev-run": "./bin/sgnl-dev-run.mjs"
+    "sgnl-action-sandbox": "./bin/sgnl-action-sandbox.mjs"
   },
   "main": "./src/index.mjs",
   "exports": {
@@ -19,14 +19,14 @@
     "shim/"
   ],
   "scripts": {
-    "test": "node --test test/"
+    "test": "node --test tests/*.test.mjs"
   },
   "keywords": [
     "sgnl",
     "actions",
     "deno",
     "sandbox",
-    "dev-runner"
+    "action-sandbox"
   ],
   "license": "MIT"
 }

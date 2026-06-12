@@ -5,7 +5,7 @@ import { resolve } from 'node:path';
 import { runAction } from '../src/index.mjs';
 
 function usage() {
-  console.error(`Usage: sgnl-dev-run <bundle-path> [options]
+  console.error(`Usage: sgnl-action-sandbox <bundle-path> [options]
 
 Options:
   --inputs, -i    JSON string or path to JSON file

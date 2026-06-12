@@ -1,6 +1,6 @@
-# @sgnl-actions/dev-runner
+# @sgnl-actions/action-sandbox
 
-Local development runner for SGNL actions. Executes bundled actions inside a Deno sandbox with production-equivalent permission flags (`--deny-net --deny-run --deny-env`), using a mock sandbox host to handle `fetch`, `signJWT`, and LDAP calls.
+SGNL action sandbox. Executes bundled actions inside a Deno sandbox with production-equivalent permission flags (`--deny-net --deny-run --deny-env`), using a mock sandbox host to handle `fetch`, `signJWT`, and LDAP calls.
 
 ## Prerequisites
 
@@ -10,19 +10,19 @@ Local development runner for SGNL actions. Executes bundled actions inside a Den
 ## Installation
 
 ```bash
-npm install -g @sgnl-actions/dev-runner
+npm install -g @sgnl-actions/action-sandbox
 ```
 
 Or run directly with npx (no install needed):
 
 ```bash
-npx @sgnl-actions/dev-runner ./dist/bundle.js --inputs '{"url": "https://httpbin.org/post"}'
+npx @sgnl-actions/action-sandbox ./dist/bundle.js --inputs '{"url": "https://httpbin.org/post"}'
 ```
 
 ## Usage
 
 ```
-sgnl-dev-run <bundle-path> [options]
+sgnl-action-sandbox <bundle-path> [options]
 
 Options:
   --inputs, -i    JSON string or path to JSON file (action inputs)
@@ -37,19 +37,19 @@ Options:
 
 ```bash
 # Run hello-world action
-sgnl-dev-run ./hello-world/dist/index.js \
+sgnl-action-sandbox ./hello-world/dist/index.js \
   --inputs '{"first_name":"Test","last_name":"User"}'
 
 # Run with secrets from a file
-sgnl-dev-run ./okta-suspend-user/dist/index.js \
+sgnl-action-sandbox ./okta-suspend-user/dist/index.js \
   --inputs '{"userId":"00u123"}' \
   --secrets ./test-secrets.json
 
 # Run error handler
-sgnl-dev-run ./hello-world/dist/index.js --handler error
+sgnl-action-sandbox ./hello-world/dist/index.js --handler error
 
 # Verbose mode to see action logs
-sgnl-dev-run ./generic-webhook/dist/index.js \
+sgnl-action-sandbox ./generic-webhook/dist/index.js \
   --inputs '{"url":"https://httpbin.org/post","method":"POST"}' \
   --verbose
 ```
@@ -57,7 +57,7 @@ sgnl-dev-run ./generic-webhook/dist/index.js \
 ## Programmatic API
 
 ```js
-import { runAction } from "@sgnl-actions/dev-runner";
+import { runAction } from "@sgnl-actions/action-sandbox";
 
 const result = await runAction({
   bundle: "./hello-world/dist/index.js",
