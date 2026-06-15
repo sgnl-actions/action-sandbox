@@ -203,11 +203,15 @@ async function main() {
     const { handler, params, context: ctx } = initData;
 
     // Inject context.crypto.signJWT as sandbox-backed function
+    // If init message contains crypto mock values, short-circuit without IPC
     const context = {
       ...ctx,
       crypto: {
         ...(ctx.crypto || {}),
         signJWT: async (payload, options) => {
+          if (ctx.crypto?.signJWT?.returns) {
+            return ctx.crypto.signJWT.returns;
+          }
           const result = await rpcCall("signJWT", { payload, options });
           return result.token;
         },

@@ -14,6 +14,7 @@ import { createSandboxHost } from './sandbox-host.mjs';
  * @param {string} [options.handler='invoke'] - Handler to call (invoke|error|halt)
  * @param {number} [options.timeout=30000] - Timeout in milliseconds
  * @param {boolean} [options.verbose=false] - Show action stderr output
+ * @param {Array|null} [options.fixtures=null] - HTTP fixtures for fetch (disables passthrough)
  * @returns {Promise<any>} The action result
  */
 export async function runAction({
@@ -24,6 +25,7 @@ export async function runAction({
   handler = 'invoke',
   timeout = 30000,
   verbose = false,
+  fixtures = null,
 } = {}) {
   const bundlePath = resolve(bundle);
 
@@ -35,7 +37,7 @@ export async function runAction({
   const { process: child, hostWrite, hostRead } = spawnDeno(bundlePath);
 
   // Create sandbox host: reads RPC requests from child stdout, writes responses to child stdin
-  const sandbox = createSandboxHost(hostRead, hostWrite, { verbose });
+  const sandbox = createSandboxHost(hostRead, hostWrite, { verbose, fixtures });
 
   // Send init message to the shim
   sandbox.sendInit({
