@@ -37,5 +37,8 @@
   "homepage": "https://github.com/sgnl-actions/action-sandbox#readme",
   "bugs": {
     "url": "https://github.com/sgnl-actions/action-sandbox/issues"
+  },
+  "dependencies": {
+    "ldapts": "^4.2.6"
   }
 }

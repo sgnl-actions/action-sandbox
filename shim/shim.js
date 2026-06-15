@@ -135,16 +135,25 @@ class MockClient {
     this.tlsOptions = options.tlsOptions;
   }
 
+  #connectionInfo() {
+    return {
+      url: this.url,
+      tlsOptions: this.tlsOptions,
+      timeout: this.timeout,
+      connectTimeout: this.connectTimeout,
+    };
+  }
+
   async bind(dn, password) {
-    return await rpcCall("ldap", { operation: "bind", dn, password });
+    return await rpcCall("ldap", { operation: "bind", ...this.#connectionInfo(), dn, password });
   }
 
   async unbind() {
-    return await rpcCall("ldap", { operation: "unbind" });
+    return await rpcCall("ldap", { operation: "unbind", url: this.url });
   }
 
   async search(baseDN, options = {}) {
-    return await rpcCall("ldap", { operation: "search", baseDN, ...options });
+    return await rpcCall("ldap", { operation: "search", ...this.#connectionInfo(), baseDN, ...options });
   }
 
   async modify(dn, changes) {
@@ -152,15 +161,15 @@ class MockClient {
       operation: c.operation,
       modification: { type: c.modification.type, values: c.modification.values },
     }));
-    return await rpcCall("ldap", { operation: "modify", dn, changes: serializedChanges });
+    return await rpcCall("ldap", { operation: "modify", ...this.#connectionInfo(), dn, changes: serializedChanges });
   }
 
   async add(dn, attributes) {
-    return await rpcCall("ldap", { operation: "add", dn, attributes });
+    return await rpcCall("ldap", { operation: "add", ...this.#connectionInfo(), dn, attributes });
   }
 
   async del(dn) {
-    return await rpcCall("ldap", { operation: "delete", dn });
+    return await rpcCall("ldap", { operation: "delete", ...this.#connectionInfo(), dn });
   }
 }
 
