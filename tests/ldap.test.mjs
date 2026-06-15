@@ -16,6 +16,14 @@ function createMockClient() {
   };
 }
 
+function MockAttribute({ type, values }) {
+  return { type, values };
+}
+
+function MockChange({ operation, modification }) {
+  return { operation, modification };
+}
+
 let latestClient;
 
 function MockClientImpl(options) {
@@ -30,7 +38,11 @@ describe('ldap handler (passthrough)', () => {
 
   beforeEach(() => {
     latestClient = null;
-    handleLdap = createLdapHandler({ ClientImpl: MockClientImpl });
+    handleLdap = createLdapHandler({
+      ClientImpl: MockClientImpl,
+      ChangeImpl: MockChange,
+      AttributeImpl: MockAttribute,
+    });
   });
 
   it('returns error when operation is missing', async () => {

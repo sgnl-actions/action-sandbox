@@ -1,16 +1,24 @@
-import { Client, Change, Attribute } from 'ldapts';
+let ldapts;
 
-export function createLdapHandler({ ClientImpl = Client } = {}) {
+async function getLdapts() {
+  if (!ldapts) {
+    ldapts = await import('ldapts');
+  }
+  return ldapts;
+}
+
+export function createLdapHandler({ ClientImpl = null, ChangeImpl = null, AttributeImpl = null } = {}) {
   const clients = new Map();
 
-  function getOrCreateClient(url, tlsOptions, timeout, connectTimeout) {
+  async function getOrCreateClient(url, tlsOptions, timeout, connectTimeout) {
     if (!url) {
       throw new Error('Missing required parameter: url');
     }
 
     let client = clients.get(url);
     if (!client) {
-      client = new ClientImpl({
+      const Impl = ClientImpl || (await getLdapts()).Client;
+      client = new Impl({
         url,
         tlsOptions: tlsOptions || {},
         timeout: timeout || 0,
@@ -31,7 +39,7 @@ export function createLdapHandler({ ClientImpl = Client } = {}) {
     try {
       switch (operation) {
         case 'bind': {
-          const client = getOrCreateClient(url, tlsOptions, timeout, connectTimeout);
+          const client = await getOrCreateClient(url, tlsOptions, timeout, connectTimeout);
           await client.bind(rest.dn, rest.password);
           return { success: true };
         }
@@ -63,6 +71,8 @@ export function createLdapHandler({ ClientImpl = Client } = {}) {
           if (!client) {
             return { error: { code: -32600, message: 'No active connection. Call bind first.' } };
           }
+          const Change = ChangeImpl || (await getLdapts()).Change;
+          const Attribute = AttributeImpl || (await getLdapts()).Attribute;
           const changes = (rest.changes || []).map(c => new Change({
             operation: c.operation,
             modification: new Attribute({
