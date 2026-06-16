@@ -1,0 +1,121 @@
+{
+  "openrpc": "1.3.2",
+  "info": {
+    "title": "SGNL Action Sandbox RPC",
+    "description": "JSON-RPC 2.0 protocol for the SGNL action sandbox host. This file documents the production protocol for reference.",
+    "version": "1.0.0"
+  },
+  "methods": [
+    {
+      "name": "fetch",
+      "description": "Perform an HTTP fetch request",
+      "params": [
+        { "name": "url", "required": true, "schema": { "type": "string" } },
+        { "name": "method", "required": true, "schema": { "type": "string" } },
+        { "name": "headers", "required": false, "schema": { "type": "object" } },
+        { "name": "body", "required": false, "schema": { "type": "string", "description": "Base64-encoded request body" } }
+      ],
+      "result": {
+        "name": "FetchResult",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "status": { "type": "integer" },
+            "statusText": { "type": "string" },
+            "headers": { "type": "object" },
+            "body": { "type": "string", "description": "Base64-encoded response body" }
+          }
+        }
+      }
+    },
+    {
+      "name": "ldap",
+      "description": "Perform an LDAP operation. Every call includes connection and bind credentials; the host manages connections per-call (stateless).",
+      "params": [
+        { "name": "operation", "required": true, "schema": { "type": "string", "enum": ["search", "add", "modify", "delete", "modifyDN"] } },
+        { "name": "url", "required": true, "schema": { "type": "string", "description": "LDAP server URL (e.g., ldaps://dc.example.com)" } },
+        { "name": "bindDN", "required": true, "schema": { "type": "string", "description": "Distinguished name for bind authentication" } },
+        { "name": "bindPassword", "required": true, "schema": { "type": "string", "description": "Password for bind authentication" } },
+        { "name": "connector_id", "required": false, "schema": { "type": "string" } },
+        { "name": "baseDN", "required": false, "schema": { "type": "string", "description": "Base DN for search operations" } },
+        { "name": "scope", "required": false, "schema": { "type": "string", "enum": ["base", "one", "sub"] } },
+        { "name": "filter", "required": false, "schema": { "type": "string" } },
+        { "name": "attributes", "required": false, "schema": { "type": "array", "items": { "type": "string" } } },
+        { "name": "sizeLimit", "required": false, "schema": { "type": "integer" } },
+        { "name": "timeLimit", "required": false, "schema": { "type": "integer" } },
+        { "name": "dn", "required": false, "schema": { "type": "string", "description": "Target DN for modify/add/delete/modifyDN operations" } },
+        { "name": "newDN", "required": false, "schema": { "type": "string", "description": "New DN for modifyDN operation" } },
+        {
+          "name": "changes",
+          "required": false,
+          "schema": {
+            "type": "array",
+            "description": "Changes for modify operation",
+            "items": {
+              "type": "object",
+              "properties": {
+                "operation": { "type": "string", "enum": ["add", "delete", "replace"] },
+                "modification": {
+                  "type": "object",
+                  "properties": {
+                    "type": { "type": "string" },
+                    "values": { "type": "array", "items": { "type": "string" } }
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "attributes_entry",
+          "required": false,
+          "schema": {
+            "type": "array",
+            "description": "Attributes for add operation",
+            "items": {
+              "type": "object",
+              "properties": {
+                "type": { "type": "string" },
+                "values": { "type": "array", "items": { "type": "string" } }
+              }
+            }
+          }
+        }
+      ],
+      "result": {
+        "name": "LdapResult",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "searchEntries": { "type": "array" },
+            "searchReferences": { "type": "array" },
+            "success": { "type": "boolean" }
+          }
+        }
+      },
+      "errors": [
+        { "code": -32000, "message": "Network error" },
+        { "code": -32001, "message": "Upstream error" },
+        { "code": -32002, "message": "Connector error" },
+        { "code": -32602, "message": "Invalid params" }
+      ]
+    },
+    {
+      "name": "signJWT",
+      "description": "Sign a JWT token using the sandbox crypto provider",
+      "params": [
+        { "name": "payload", "required": true, "schema": { "type": "object" } },
+        { "name": "options", "required": false, "schema": { "type": "object" } }
+      ],
+      "result": {
+        "name": "SignJWTResult",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "jwt": { "type": "string" }
+          }
+        }
+      }
+    }
+  ]
+}

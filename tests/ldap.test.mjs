@@ -59,44 +59,17 @@ describe('ldap handler (passthrough)', () => {
     });
   });
 
-  it('returns error when url is missing on bind', async () => {
-    const result = await handleLdap({ operation: 'bind', dn: 'cn=admin', password: 'secret' });
+  it('returns error when url is missing', async () => {
+    const result = await handleLdap({ operation: 'search', bindDN: 'cn=admin', bindPassword: 'secret' });
     assert.equal(result.error.message, 'Missing required parameter: url');
   });
 
-  it('binds to LDAP server and creates client', async () => {
-    const result = await handleLdap({
-      operation: 'bind',
-      url: 'ldaps://ad.example.com:636',
-      tlsOptions: { rejectUnauthorized: false },
-      timeout: 5000,
-      connectTimeout: 3000,
-      dn: 'cn=admin,dc=example,dc=com',
-      password: 'secret',
-    });
-
-    assert.deepEqual(result, { success: true });
-    assert.deepEqual(latestClient.options, {
-      url: 'ldaps://ad.example.com:636',
-      tlsOptions: { rejectUnauthorized: false },
-      timeout: 5000,
-      connectTimeout: 3000,
-    });
-    assert.equal(latestClient.bind.mock.callCount(), 1);
-    assert.deepEqual(latestClient.bind.mock.calls[0].arguments, ['cn=admin,dc=example,dc=com', 'secret']);
-  });
-
-  it('searches after bind', async () => {
-    await handleLdap({
-      operation: 'bind',
-      url: 'ldaps://search-test.example.com:636',
-      dn: 'cn=admin',
-      password: 'secret',
-    });
-
+  it('searches with bind credentials', async () => {
     const result = await handleLdap({
       operation: 'search',
       url: 'ldaps://search-test.example.com:636',
+      bindDN: 'cn=admin',
+      bindPassword: 'secret',
       baseDN: 'dc=example,dc=com',
       filter: '(uid=jdoe)',
       scope: 'sub',
@@ -106,36 +79,22 @@ describe('ldap handler (passthrough)', () => {
       searchEntries: [{ dn: 'cn=user,dc=example,dc=com', cn: 'user' }],
       searchReferences: [],
     });
+    assert.equal(latestClient.bind.mock.callCount(), 1);
+    assert.deepEqual(latestClient.bind.mock.calls[0].arguments, ['cn=admin', 'secret']);
     assert.equal(latestClient.search.mock.callCount(), 1);
     const searchArgs = latestClient.search.mock.calls[0].arguments;
     assert.equal(searchArgs[0], 'dc=example,dc=com');
     assert.equal(searchArgs[1].filter, '(uid=jdoe)');
     assert.equal(searchArgs[1].scope, 'sub');
-  });
-
-  it('returns error when searching without prior bind', async () => {
-    const result = await handleLdap({
-      operation: 'search',
-      url: 'ldaps://no-bind.example.com:636',
-      baseDN: 'dc=example,dc=com',
-    });
-
-    assert.deepEqual(result, {
-      error: { code: -32600, message: 'No active connection. Call bind first.' },
-    });
+    assert.equal(latestClient.unbind.mock.callCount(), 1);
   });
 
   it('modifies with changes', async () => {
-    await handleLdap({
-      operation: 'bind',
-      url: 'ldaps://modify-test.example.com:636',
-      dn: 'cn=admin',
-      password: 'secret',
-    });
-
     const result = await handleLdap({
       operation: 'modify',
       url: 'ldaps://modify-test.example.com:636',
+      bindDN: 'cn=admin',
+      bindPassword: 'secret',
       dn: 'cn=user,dc=example,dc=com',
       changes: [{
         operation: 'add',
@@ -144,6 +103,7 @@ describe('ldap handler (passthrough)', () => {
     });
 
     assert.deepEqual(result, { success: true });
+    assert.equal(latestClient.bind.mock.callCount(), 1);
     assert.equal(latestClient.modify.mock.callCount(), 1);
     const modifyArgs = latestClient.modify.mock.calls[0].arguments;
     assert.equal(modifyArgs[0], 'cn=user,dc=example,dc=com');
@@ -151,21 +111,17 @@ describe('ldap handler (passthrough)', () => {
   });
 
   it('adds an entry', async () => {
-    await handleLdap({
-      operation: 'bind',
-      url: 'ldaps://add-test.example.com:636',
-      dn: 'cn=admin',
-      password: 'secret',
-    });
-
     const result = await handleLdap({
       operation: 'add',
       url: 'ldaps://add-test.example.com:636',
+      bindDN: 'cn=admin',
+      bindPassword: 'secret',
       dn: 'cn=newuser,dc=example,dc=com',
-      attributes: { cn: 'newuser', sn: 'User' },
+      attributes_entry: { cn: 'newuser', sn: 'User' },
     });
 
     assert.deepEqual(result, { success: true });
+    assert.equal(latestClient.bind.mock.callCount(), 1);
     assert.equal(latestClient.add.mock.callCount(), 1);
     assert.deepEqual(latestClient.add.mock.calls[0].arguments, [
       'cn=newuser,dc=example,dc=com',
@@ -174,46 +130,18 @@ describe('ldap handler (passthrough)', () => {
   });
 
   it('deletes an entry', async () => {
-    await handleLdap({
-      operation: 'bind',
-      url: 'ldaps://del-test.example.com:636',
-      dn: 'cn=admin',
-      password: 'secret',
-    });
-
     const result = await handleLdap({
       operation: 'delete',
       url: 'ldaps://del-test.example.com:636',
+      bindDN: 'cn=admin',
+      bindPassword: 'secret',
       dn: 'cn=olduser,dc=example,dc=com',
     });
 
     assert.deepEqual(result, { success: true });
+    assert.equal(latestClient.bind.mock.callCount(), 1);
     assert.equal(latestClient.del.mock.callCount(), 1);
     assert.deepEqual(latestClient.del.mock.calls[0].arguments, ['cn=olduser,dc=example,dc=com']);
-  });
-
-  it('unbinds and removes client from map', async () => {
-    await handleLdap({
-      operation: 'bind',
-      url: 'ldaps://unbind-test.example.com:636',
-      dn: 'cn=admin',
-      password: 'secret',
-    });
-
-    const result = await handleLdap({
-      operation: 'unbind',
-      url: 'ldaps://unbind-test.example.com:636',
-    });
-
-    assert.deepEqual(result, { success: true });
-    assert.equal(latestClient.unbind.mock.callCount(), 1);
-
-    const searchResult = await handleLdap({
-      operation: 'search',
-      url: 'ldaps://unbind-test.example.com:636',
-      baseDN: 'dc=example,dc=com',
-    });
-    assert.equal(searchResult.error.message, 'No active connection. Call bind first.');
   });
 
   it('returns error details when ldap operation throws', async () => {
@@ -224,16 +152,18 @@ describe('ldap handler (passthrough)', () => {
           err.code = 49;
           throw err;
         },
+        unbind: async () => {},
       };
     }
 
     const handler = createLdapHandler({ ClientImpl: FailingClient });
 
     const result = await handler({
-      operation: 'bind',
+      operation: 'search',
       url: 'ldaps://error-test.example.com:636',
-      dn: 'cn=admin',
-      password: 'wrong',
+      bindDN: 'cn=admin',
+      bindPassword: 'wrong',
+      baseDN: 'dc=example,dc=com',
     });
 
     assert.deepEqual(result, {

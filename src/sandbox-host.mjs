@@ -12,11 +12,11 @@ import { createLdapHandler } from './handlers/ldap.mjs';
  *
  * @returns {{ sendInit, close, resultPromise }}
  */
-export function createSandboxHost(readStream, writeStream, { verbose = false, fixtures = null, ldapFixtures = null } = {}) {
+export function createSandboxHost(readStream, writeStream, { verbose = false, ldapFixtures = null } = {}) {
   const rl = createInterface({ input: readStream });
 
   const handlers = {
-    fetch: createFetchHandler(fixtures),
+    fetch: createFetchHandler(),
     signJWT: handleSignJWT,
     ldap: createLdapHandler({ fixtures: ldapFixtures }),
   };

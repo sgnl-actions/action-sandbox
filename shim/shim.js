@@ -151,27 +151,30 @@ class MockClient {
     this.timeout = options.timeout;
     this.connectTimeout = options.connectTimeout;
     this.tlsOptions = options.tlsOptions;
+    this.bindDN = null;
+    this.bindPassword = null;
   }
 
-  #connectionInfo() {
+  #baseParams() {
     return {
       url: this.url,
-      tlsOptions: this.tlsOptions,
-      timeout: this.timeout,
-      connectTimeout: this.connectTimeout,
+      bindDN: this.bindDN,
+      bindPassword: this.bindPassword,
     };
   }
 
   async bind(dn, password) {
-    return await rpcCall("ldap", { operation: "bind", ...this.#connectionInfo(), dn, password });
+    this.bindDN = dn;
+    this.bindPassword = password;
   }
 
   async unbind() {
-    return await rpcCall("ldap", { operation: "unbind", url: this.url });
+    this.bindDN = null;
+    this.bindPassword = null;
   }
 
   async search(baseDN, options = {}) {
-    return await rpcCall("ldap", { operation: "search", ...this.#connectionInfo(), baseDN, ...options });
+    return await rpcCall("ldap", { operation: "search", ...this.#baseParams(), baseDN, ...options });
   }
 
   async modify(dn, changes) {
@@ -179,23 +182,23 @@ class MockClient {
       operation: c.operation,
       modification: { type: c.modification.type, values: c.modification.values },
     }));
-    return await rpcCall("ldap", { operation: "modify", ...this.#connectionInfo(), dn, changes: serializedChanges });
+    return await rpcCall("ldap", { operation: "modify", ...this.#baseParams(), dn, changes: serializedChanges });
   }
 
   async add(dn, attributes) {
-    return await rpcCall("ldap", { operation: "add", ...this.#connectionInfo(), dn, attributes });
+    return await rpcCall("ldap", { operation: "add", ...this.#baseParams(), dn, attributes_entry: attributes });
   }
 
   async del(dn) {
-    return await rpcCall("ldap", { operation: "delete", ...this.#connectionInfo(), dn });
+    return await rpcCall("ldap", { operation: "delete", ...this.#baseParams(), dn });
   }
 
   async modifyDN(dn, newDN) {
-    return await rpcCall("ldap", { operation: "modifyDN", ...this.#connectionInfo(), dn, newDN });
+    return await rpcCall("ldap", { operation: "modifyDN", ...this.#baseParams(), dn, newDN });
   }
 
   async compare(dn, attribute, value) {
-    return await rpcCall("ldap", { operation: "compare", ...this.#connectionInfo(), dn, attribute, value });
+    return await rpcCall("ldap", { operation: "compare", ...this.#baseParams(), dn, attribute, value });
   }
 }
 

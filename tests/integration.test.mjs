@@ -1,9 +1,10 @@
-import { describe, it, before, after } from 'node:test';
+import { describe, it, before, after, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { runAction } from '../src/index.mjs';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createServer } from 'node:http';
+import nock from 'nock';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const helloBundle = resolve(__dirname, 'fixtures/hello.bundle.js');
@@ -122,25 +123,24 @@ describe('runAction integration', () => {
   });
 });
 
-describe('runAction fixture mode', () => {
-  it('uses fixture response instead of real HTTP', async () => {
-    const fixtures = [
-      {
-        request: { method: 'GET', url: 'https://api.example.com/data' },
-        response: {
-          statusCode: 200,
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ method: 'GET', url: '/data' }),
-        },
-      },
-    ];
+describe('runAction with nock', () => {
+  afterEach(() => {
+    nock.cleanAll();
+    nock.enableNetConnect();
+  });
+
+  it('uses nock interceptor instead of real HTTP', async () => {
+    nock('https://api.example.com')
+      .get('/data')
+      .reply(200, JSON.stringify({ method: 'GET', url: '/data' }), {
+        'content-type': 'application/json',
+      });
 
     const result = await runAction({
       bundle: fetchBundle,
       inputs: { url: 'https://api.example.com/data', method: 'GET' },
       handler: 'invoke',
       timeout: 15000,
-      fixtures,
     });
 
     assert.equal(result.status, 200);
@@ -149,13 +149,8 @@ describe('runAction fixture mode', () => {
     assert.equal(body.url, '/data');
   });
 
-  it('returns error when no fixture matches', async () => {
-    const fixtures = [
-      {
-        request: { method: 'POST', url: 'https://api.example.com/other' },
-        response: { statusCode: 201, body: 'created' },
-      },
-    ];
+  it('returns error when fetch fails with no interceptor', async () => {
+    nock.disableNetConnect();
 
     await assert.rejects(
       () => runAction({
@@ -163,19 +158,15 @@ describe('runAction fixture mode', () => {
         inputs: { url: 'https://api.example.com/data', method: 'GET' },
         handler: 'invoke',
         timeout: 15000,
-        fixtures,
       }),
-      { message: /No fixture matched: GET https:\/\/api\.example\.com\/data/ },
+      { message: /Disallowed net connect/ },
     );
   });
 
-  it('simulates network error via fixture', async () => {
-    const fixtures = [
-      {
-        request: { method: 'GET', url: 'https://api.example.com/fail' },
-        response: { networkError: true },
-      },
-    ];
+  it('simulates network error via nock', async () => {
+    nock('https://api.example.com')
+      .get('/fail')
+      .replyWithError('Network error: connection refused');
 
     await assert.rejects(
       () => runAction({
@@ -183,29 +174,21 @@ describe('runAction fixture mode', () => {
         inputs: { url: 'https://api.example.com/fail', method: 'GET' },
         handler: 'invoke',
         timeout: 15000,
-        fixtures,
       }),
       { message: /Network error: connection refused/ },
     );
   });
 
-  it('consumes multiple fixtures for same URL in order', async () => {
-    // Create a bundle that makes two fetch calls to the same URL
-    // For this test, we use the fetchBundle which only makes one call,
-    // so we just verify a single fixture is consumed correctly
-    const fixtures = [
-      {
-        request: { method: 'GET', url: 'https://api.example.com/token' },
-        response: { statusCode: 200, body: JSON.stringify({ token: 'abc123' }) },
-      },
-    ];
+  it('intercepts request to specific URL', async () => {
+    nock('https://api.example.com')
+      .get('/token')
+      .reply(200, JSON.stringify({ token: 'abc123' }));
 
     const result = await runAction({
       bundle: fetchBundle,
       inputs: { url: 'https://api.example.com/token', method: 'GET' },
       handler: 'invoke',
       timeout: 15000,
-      fixtures,
     });
 
     assert.equal(result.status, 200);

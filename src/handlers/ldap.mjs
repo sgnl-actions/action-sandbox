@@ -16,12 +16,31 @@ export function createLdapHandler({ ClientImpl = null, ChangeImpl = null, Attrib
     // Group fixtures by operation
     const fixturesByOp = {};
     const counters = {};
+    let pendingBindError = null;
+
     for (const f of fixtures) {
       const op = f.operation;
       if (!fixturesByOp[op]) fixturesByOp[op] = [];
       fixturesByOp[op].push(f);
       counters[op] = 0;
     }
+
+    // Process bind fixtures: if any bind fixture has result === 'error',
+    // store it as pendingBindError (simulates auth failure on first real op)
+    if (fixturesByOp['bind']) {
+      for (const f of fixturesByOp['bind']) {
+        if (f.result === 'error') {
+          pendingBindError = {
+            code: f.code || 49,
+            message: f.message || 'Bind failed',
+          };
+          break;
+        }
+      }
+      delete fixturesByOp['bind'];
+    }
+    // Remove unbind fixtures — they have no meaning in the production spec
+    delete fixturesByOp['unbind'];
 
     function getFixtureForOp(operation) {
       const list = fixturesByOp[operation];
@@ -56,26 +75,14 @@ export function createLdapHandler({ ClientImpl = null, ChangeImpl = null, Attrib
         return { error: { code: -32602, message: 'Missing required parameter: operation' } };
       }
 
-      // bind/unbind always succeed if no fixture defined for them
-      if (operation === 'bind') {
-        const fixture = getFixtureForOp('bind');
-        if (fixture && fixture.result === 'error') {
-          return {
-            error: {
-              code: fixture.code || 49,
-              message: fixture.message || 'Bind failed',
-            },
-          };
-        }
-        return { success: true };
+      // If there's a pending bind error, return it on the first real operation
+      if (pendingBindError) {
+        const err = pendingBindError;
+        pendingBindError = null;
+        return { error: err };
       }
 
-      if (operation === 'unbind') {
-        getFixtureForOp('unbind'); // consume counter but always succeed
-        return { success: true };
-      }
-
-      // For other operations, get the next fixture for this operation type
+      // For operations, get the next fixture for this operation type
       const fixture = getFixtureForOp(operation);
       if (!fixture) {
         return { error: { code: -32001, message: `No LDAP fixture defined for operation: ${operation}` } };
@@ -115,8 +122,6 @@ export function createLdapHandler({ ClientImpl = null, ChangeImpl = null, Attrib
         return { error: { code: -32602, message: 'Missing required parameter: operation' } };
       }
       switch (operation) {
-        case 'bind':
-        case 'unbind':
         case 'modify':
         case 'add':
         case 'delete':
@@ -130,56 +135,32 @@ export function createLdapHandler({ ClientImpl = null, ChangeImpl = null, Attrib
       }
     };
   }
-  const clients = new Map();
 
-  async function getOrCreateClient(url, tlsOptions, timeout, connectTimeout) {
-    if (!url) {
-      throw new Error('Missing required parameter: url');
-    }
-
-    let client = clients.get(url);
-    if (!client) {
-      const Impl = ClientImpl || (await getLdapts()).Client;
-      client = new Impl({
-        url,
-        tlsOptions: tlsOptions || {},
-        timeout: timeout || 0,
-        connectTimeout: connectTimeout || 0,
-      });
-      clients.set(url, client);
-    }
-    return client;
-  }
-
+  // Passthrough mode: each operation creates a fresh client, binds, performs
+  // the operation, and unbinds. The host manages the full lifecycle per-call (stateless).
   return async function handleLdap(params) {
-    const { operation, url, tlsOptions, timeout, connectTimeout, ...rest } = params;
+    const { operation, url, bindDN, bindPassword, ...rest } = params;
 
     if (!operation) {
       return { error: { code: -32602, message: 'Missing required parameter: operation' } };
     }
 
+    if (!url) {
+      return { error: { code: -32602, message: 'Missing required parameter: url' } };
+    }
+
+    let client;
     try {
+      const Impl = ClientImpl || (await getLdapts()).Client;
+      client = new Impl({ url, tlsOptions: {}, timeout: 0, connectTimeout: 0 });
+
+      // Bind with provided credentials
+      if (bindDN) {
+        await client.bind(bindDN, bindPassword || '');
+      }
+
       switch (operation) {
-        case 'bind': {
-          const client = await getOrCreateClient(url, tlsOptions, timeout, connectTimeout);
-          await client.bind(rest.dn, rest.password);
-          return { success: true };
-        }
-
-        case 'unbind': {
-          const client = clients.get(url);
-          if (client) {
-            await client.unbind();
-            clients.delete(url);
-          }
-          return { success: true };
-        }
-
         case 'search': {
-          const client = clients.get(url);
-          if (!client) {
-            return { error: { code: -32600, message: 'No active connection. Call bind first.' } };
-          }
           const { baseDN, ...searchOpts } = rest;
           const result = await client.search(baseDN, searchOpts);
           return {
@@ -189,10 +170,6 @@ export function createLdapHandler({ ClientImpl = null, ChangeImpl = null, Attrib
         }
 
         case 'modify': {
-          const client = clients.get(url);
-          if (!client) {
-            return { error: { code: -32600, message: 'No active connection. Call bind first.' } };
-          }
           const Change = ChangeImpl || (await getLdapts()).Change;
           const Attribute = AttributeImpl || (await getLdapts()).Attribute;
           const changes = (rest.changes || []).map(c => new Change({
@@ -207,30 +184,23 @@ export function createLdapHandler({ ClientImpl = null, ChangeImpl = null, Attrib
         }
 
         case 'add': {
-          const client = clients.get(url);
-          if (!client) {
-            return { error: { code: -32600, message: 'No active connection. Call bind first.' } };
-          }
-          await client.add(rest.dn, rest.attributes);
+          await client.add(rest.dn, rest.attributes_entry || rest.attributes);
           return { success: true };
         }
 
         case 'delete': {
-          const client = clients.get(url);
-          if (!client) {
-            return { error: { code: -32600, message: 'No active connection. Call bind first.' } };
-          }
           await client.del(rest.dn);
           return { success: true };
         }
 
         case 'modifyDN': {
-          const client = clients.get(url);
-          if (!client) {
-            return { error: { code: -32600, message: 'No active connection. Call bind first.' } };
-          }
           await client.modifyDN(rest.dn, rest.newDN);
           return { success: true };
+        }
+
+        case 'compare': {
+          const result = await client.compare(rest.dn, rest.attribute, rest.value);
+          return { success: true, result };
         }
 
         default:
@@ -243,6 +213,10 @@ export function createLdapHandler({ ClientImpl = null, ChangeImpl = null, Attrib
           message: err.message || 'LDAP operation failed',
         },
       };
+    } finally {
+      if (client) {
+        try { await client.unbind(); } catch (_) { /* ignore unbind errors */ }
+      }
     }
   };
 }

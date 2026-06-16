@@ -40,5 +40,8 @@
   },
   "dependencies": {
     "ldapts": "^4.2.6"
+  },
+  "devDependencies": {
+    "nock": "^14.0.0"
   }
 }
