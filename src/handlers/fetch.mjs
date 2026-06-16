@@ -1,4 +1,23 @@
 /**
+ * Normalize a URL for fixture matching.
+ * Decodes percent-encoded characters and normalizes space encoding (+/%20)
+ * so that equivalent URLs match regardless of encoding style.
+ */
+function normalizeUrl(url) {
+  try {
+    const parsed = new URL(url);
+    // Decode path, and decode query (replacing + with space first, since + means space in query strings)
+    const decodedPath = decodeURIComponent(parsed.pathname);
+    const decodedQuery = parsed.search
+      ? '?' + decodeURIComponent(parsed.search.slice(1).replace(/\+/g, '%20'))
+      : '';
+    return parsed.origin + decodedPath + decodedQuery;
+  } catch {
+    return decodeURIComponent(url.replace(/\+/g, '%20'));
+  }
+}
+
+/**
  * Creates a fetch handler, optionally backed by fixtures.
  *
  * When `fixtures` is provided, requests are matched against the fixture list
@@ -25,9 +44,10 @@ export function createFetchHandler(fixtures = null) {
 
     // Fixture mode
     if (fixtureQueue) {
-      const key = `${method} ${url}`;
+      const normalizedUrl = normalizeUrl(url);
+      const key = `${method} ${normalizedUrl}`;
       const idx = fixtureQueue.findIndex(
-        (f) => f.request.method === method && f.request.url === url,
+        (f) => f.request.method === method && normalizeUrl(f.request.url) === normalizedUrl,
       );
 
       if (idx !== -1) {

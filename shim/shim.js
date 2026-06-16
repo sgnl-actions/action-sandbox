@@ -189,12 +189,33 @@ class MockClient {
   async del(dn) {
     return await rpcCall("ldap", { operation: "delete", ...this.#connectionInfo(), dn });
   }
+
+  async modifyDN(dn, newDN) {
+    return await rpcCall("ldap", { operation: "modifyDN", ...this.#connectionInfo(), dn, newDN });
+  }
+
+  async compare(dn, attribute, value) {
+    return await rpcCall("ldap", { operation: "compare", ...this.#connectionInfo(), dn, attribute, value });
+  }
 }
 
 const ldaptsModule = {
   Client: MockClient,
   Change: MockChange,
   Attribute: MockAttribute,
+  EqualityFilter: class EqualityFilter {
+    constructor({ attribute, value }) {
+      this.attribute = attribute;
+      this.value = value;
+    }
+    toString() { return `(${this.attribute}=${this.value})`; }
+  },
+  AndFilter: class AndFilter {
+    constructor({ filters }) {
+      this.filters = filters || [];
+    }
+    toString() { return `(&${this.filters.map(f => f.toString()).join('')})`; }
+  },
 };
 
 // --- Process shim (prevents --deny-env permission errors from bundled SDKs) ---

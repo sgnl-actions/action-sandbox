@@ -1,7 +1,7 @@
 import { createInterface } from 'node:readline';
 import { createFetchHandler } from './handlers/fetch.mjs';
 import { handleSignJWT } from './handlers/sign-jwt.mjs';
-import { handleLdap } from './handlers/ldap.mjs';
+import { createLdapHandler } from './handlers/ldap.mjs';
 
 /**
  * Creates a sandbox host that reads JSON-RPC requests from `readStream` (child stdout)
@@ -12,13 +12,13 @@ import { handleLdap } from './handlers/ldap.mjs';
  *
  * @returns {{ sendInit, close, resultPromise }}
  */
-export function createSandboxHost(readStream, writeStream, { verbose = false, fixtures = null } = {}) {
+export function createSandboxHost(readStream, writeStream, { verbose = false, fixtures = null, ldapFixtures = null } = {}) {
   const rl = createInterface({ input: readStream });
 
   const handlers = {
     fetch: createFetchHandler(fixtures),
     signJWT: handleSignJWT,
-    ldap: handleLdap,
+    ldap: createLdapHandler({ fixtures: ldapFixtures }),
   };
 
   let resolveResult;
