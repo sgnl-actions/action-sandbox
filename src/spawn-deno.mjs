@@ -3,7 +3,8 @@ import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const shimPath = resolve(__dirname, '../shim/shim.js');
+const shimDir = resolve(__dirname, '../shim');
+const shimPath = resolve(shimDir, 'shim.js');
 
 const MIN_DENO_MAJOR = 2;
 
@@ -51,8 +52,9 @@ export function spawnDeno(bundlePath) {
     '--deny-net',
     '--deny-run',
     '--deny-env',
-    `--allow-read=${shimPath},${bundlePath}`,
+    `--allow-read=${shimDir},${bundlePath}`,
     '--no-prompt',
+    '--cached-only',
     shimPath,
     bundlePath,
   ], {
