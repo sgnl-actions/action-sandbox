@@ -2,7 +2,9 @@
  * Creates a fetch handler, optionally backed by fixtures.
  *
  * When `fixtures` is provided, requests are matched against the fixture list
- * (FIFO, consumed on match). Unmatched requests return an error (strict mode).
+ * (FIFO order). Matched fixtures are consumed, but repeated requests to the
+ * same method+URL will replay the last consumed fixture (supporting SDK retries).
+ * Unmatched requests return an error (strict mode).
  *
  * When `fixtures` is null, requests pass through to real HTTP via Node.js fetch.
  *
@@ -11,6 +13,8 @@
  */
 export function createFetchHandler(fixtures = null) {
   const fixtureQueue = fixtures ? [...fixtures] : null;
+  // Track last response per method+URL for retry support
+  const lastResponse = new Map();
 
   return async function handleFetch(params) {
     const { url, method = 'GET', headers = {}, body } = params;
@@ -21,6 +25,7 @@ export function createFetchHandler(fixtures = null) {
 
     // Fixture mode
     if (fixtureQueue) {
+      const key = `${method} ${url}`;
       const idx = fixtureQueue.findIndex(
         (f) => f.request.method === method && f.request.url === url,
       );
@@ -28,17 +33,27 @@ export function createFetchHandler(fixtures = null) {
       if (idx !== -1) {
         const fixture = fixtureQueue.splice(idx, 1)[0];
 
+        let response;
         if (fixture.response.networkError) {
-          return {
+          response = {
             error: { code: -32002, message: 'Network error: connection refused' },
+          };
+        } else {
+          response = {
+            status: fixture.response.statusCode,
+            headers: fixture.response.headers || {},
+            body: Buffer.from(fixture.response.body || '').toString('base64'),
           };
         }
 
-        return {
-          status: fixture.response.statusCode,
-          headers: fixture.response.headers || {},
-          body: Buffer.from(fixture.response.body || '').toString('base64'),
-        };
+        // Cache for retries
+        lastResponse.set(key, response);
+        return response;
+      }
+
+      // No fixture in queue — check if we have a cached response (SDK retry)
+      if (lastResponse.has(key)) {
+        return lastResponse.get(key);
       }
 
       return {
