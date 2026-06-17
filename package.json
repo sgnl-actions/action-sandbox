@@ -1,38 +1,47 @@
 {
-  "name": "@sgnl/job-template",
-  "description": "Template for SGNL JavaScript jobs",
+  "name": "@sgnl-actions/action-sandbox",
+  "version": "0.1.0",
+  "description": "SGNL action sandbox — runs bundles in a Deno sandbox with mock host",
   "type": "module",
-  "main": "dist/index.js",
+  "bin": {
+    "sgnl-action-sandbox": "./bin/sgnl-action-sandbox.mjs"
+  },
+  "main": "./src/index.mjs",
+  "exports": {
+    ".": "./src/index.mjs"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "files": [
+    "bin/",
+    "src/",
+    "shim/"
+  ],
   "scripts": {
-    "build": "rollup -c && generate-license-file --input package.json --output dist/licenses.txt --overwrite --ci",
-    "build:watch": "rollup -c -w",
-    "test": "NODE_OPTIONS=--experimental-vm-modules jest",
-    "test:watch": "NODE_OPTIONS=--experimental-vm-modules jest --watch",
-    "test:coverage": "NODE_OPTIONS=--experimental-vm-modules jest --coverage",
-    "lint": "eslint .",
-    "lint:fix": "eslint . --fix",
-    "validate": "sgnl-validate",
-    "dev": "node scripts/dev-runner.js"
+    "test": "node --test tests/*.test.mjs"
   },
   "keywords": [
     "sgnl",
-    "job",
-    "template",
-    "identity",
-    "security"
+    "actions",
+    "deno",
+    "sandbox",
+    "action-sandbox"
   ],
   "author": "SGNL Engineering",
   "license": "MIT",
-  "devDependencies": {
-    "@sgnl-actions/eslint-config": "github:sgnl-actions/eslint-config#2b56a0c67e638f21688d73dbfb228a2f2d868235",
-    "@sgnl-actions/rollup-config": "github:sgnl-actions/rollup-config#f94654e450f82042ad8268ac69d79e03889031ee",
-    "generate-license-file": "^4.1.1",
-    "@sgnl-actions/validate": "github:sgnl-actions/validate#1392b07e0c1563e729d68d2eec328ee8e03e0783",
-    "eslint": "^10.0.1",
-    "jest": "^30.4.2",
-    "rollup": "^4.59.0"
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/sgnl-actions/action-sandbox.git"
   },
-  "overrides": {
-    "serialize-javascript": ">=7.0.5"
+  "homepage": "https://github.com/sgnl-actions/action-sandbox#readme",
+  "bugs": {
+    "url": "https://github.com/sgnl-actions/action-sandbox/issues"
+  },
+  "dependencies": {
+    "ldapts": "^4.2.6"
+  },
+  "devDependencies": {
+    "nock": "^14.0.0"
   }
 }

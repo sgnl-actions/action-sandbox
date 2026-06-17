@@ -2,11 +2,23 @@ name: CI
 
 on:
   push:
-    branches: [ main ]
+    branches: [main]
   pull_request:
-    branches: [ main ]
-  workflow_call:
+    branches: [main]
+  workflow_dispatch:
 
 jobs:
-  ci:
-    uses: sgnl-actions/.github/.github/workflows/ci.yml@b638fbaf3d0a7f9b7ef553b82b996e9766383f00 # v1.0.0
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/setup-node@2028fbc5c25fe9cf00d9f06a71cc4710d4507903 # v6.0.0
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org
+      - uses: denoland/setup-deno@667a34cdef165d8d2b2e98dde39547c9daac7282 # v2.0.4
+        with:
+          deno-version: v2.x
+       # TODO: Update this to not remove once all dependent packages are approved in artifactory. 
+      - run: rm -f package-lock.json && npm install
+      - run: npm test
