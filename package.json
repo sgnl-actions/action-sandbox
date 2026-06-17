@@ -39,7 +39,7 @@
     "url": "https://github.com/sgnl-actions/action-sandbox/issues"
   },
   "dependencies": {
-    "ldapts": "^4.2.6"
+    "ldapts": "^8.1.8"
   },
   "devDependencies": {
     "nock": "^14.0.0"
