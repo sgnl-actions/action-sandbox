@@ -1,183 +1,166 @@
-# SGNL Job Template
+# @sgnl-actions/action-sandbox
 
-This repository provides a template for creating JavaScript jobs for the SGNL's CAEP Hub.
+Run SGNL action bundles in a Deno sandbox with production-equivalent permission flags. All external calls (HTTP, LDAP, JWT signing) are proxied through a host bridge via IPC, enabling fixture-based testing without real network access.
 
-## Quick Start
+## Prerequisites
 
-1. **Use this template** to create a new repository
-2. **Clone** your new repository locally
-3. **Install dependencies**: `npm install`  
-4. **Modify** `src/script.mjs` with your job logic
-5. **Update** `metadata.yaml` with your job schema
-6. **Test locally**: `npm run dev`
-7. **Run tests**: `npm test`
-8. **Build**: `npm run build`
-9. **Release**: Create a git tag and push
+- **Node.js** >= 20
+- **Deno** >= 2.x ([install](https://deno.land/#installation))
+
+## Installation
+
+```bash
+npm install @sgnl-actions/action-sandbox
+```
+
+## Usage
+
+### CLI
+
+```bash
+# Run a bundle with inputs
+sgnl-action-sandbox dist/index.js --inputs '{"name": "Alice"}'
+
+# With secrets and environment
+sgnl-action-sandbox dist/index.js \
+  -i '{"userId": "123"}' \
+  -s '{"API_KEY": "sk-..."}' \
+  -e '{"BASE_URL": "https://api.example.com"}'
+
+# From JSON files
+sgnl-action-sandbox dist/index.js \
+  --inputs tests/inputs.json \
+  --secrets tests/secrets.json
+
+# Verbose mode (shows action logs)
+sgnl-action-sandbox dist/index.js -i '{"name": "test"}' --verbose
+
+# Custom timeout (ms)
+sgnl-action-sandbox dist/index.js -i '{}' --timeout 60000
+```
+
+### Programmatic API
+
+```javascript
+import { runAction } from '@sgnl-actions/action-sandbox';
+
+const result = await runAction({
+  bundle: 'dist/index.js',
+  inputs: { userId: '123' },
+  secrets: { API_KEY: 'sk-...' },
+  environment: { BASE_URL: 'https://api.example.com' },
+  handler: 'invoke',
+  timeout: 30000,
+  verbose: false,
+});
+
+console.log(result);
+```
+
+### With `@sgnl-actions/testing`
+
+The sandbox is typically used via the `sgnl-sandbox-test` CLI provided by `@sgnl-actions/testing`. It auto-discovers `dist/index.js` + `tests/scenarios.yaml` and runs each scenario through the sandbox with nock-based HTTP mocking:
+
+```bash
+npx sgnl-sandbox-test
+npx sgnl-sandbox-test --verbose
+npx sgnl-sandbox-test --common  # include common error scenarios
+```
+
+## How It Works
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│  Host (Node.js)                                             │
+│                                                             │
+│  runAction()                                                │
+│    ├── Spawns Deno with sandbox flags                       │
+│    ├── Sends init message (handler, params, context)        │
+│    └── Sandbox Host (reads RPC from stdout, responds stdin) │
+│          ├── fetch  → nock interceptor or real HTTP          │
+│          ├── signJWT → ephemeral RSA-2048 signing           │
+│          └── ldap   → real ldapts or fixture mock           │
+│                                                             │
+├─────────────────────────────────────────────────────────────┤
+│  Deno Sandbox (isolated subprocess)                         │
+│                                                             │
+│  Permissions:                                               │
+│    --deny-net --deny-run --deny-env                         │
+│    --allow-read=<shim>,<bundle>                             │
+│    --no-prompt --cached-only                                │
+│                                                             │
+│  shim.js                                                    │
+│    ├── Loads bundle via require()                           │
+│    ├── Calls module.exports[handler](params, context)       │
+│    ├── Proxies fetch/crypto/ldap through IPC to host        │
+│    └── Returns result as __RESULT__<json> on stdout         │
+└─────────────────────────────────────────────────────────────┘
+```
+
+The Deno subprocess runs with strict permission denial. Any attempt by action code to access the network, spawn processes, or read environment variables is blocked at the OS level. All external calls go through the shim's IPC layer back to the Node.js host.
+
+## API Reference
+
+### `runAction(options)`
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| `bundle` | `string` | (required) | Path to the bundled action JS file |
+| `inputs` | `object` | `{}` | Action input parameters |
+| `secrets` | `object` | `{}` | Secret values (API keys, tokens) |
+| `environment` | `object` | `{}` | Environment data |
+| `handler` | `string` | `'invoke'` | Handler to call: `invoke`, `error`, or `halt` |
+| `timeout` | `number` | `30000` | Timeout in milliseconds |
+| `verbose` | `boolean` | `false` | Show Deno stderr output |
+| `ldapFixtures` | `Array\|null` | `null` | LDAP fixture data (disables real LDAP) |
+
+Returns a `Promise` that resolves with the action's return value, or rejects if the action throws, times out, or fails to spawn.
+
+## RPC Methods
+
+The sandbox shim proxies these calls from action code to the host:
+
+| Method | Description |
+|--------|-------------|
+| `fetch` | HTTP requests — intercepted by nock in test mode, or passed through to real HTTP |
+| `signJWT` | JWT signing — uses an ephemeral RSA-2048 key pair |
+| `ldap` | LDAP operations — uses real `ldapts` client or fixture responses |
+
+## File Structure
+
+```
+bin/
+  sgnl-action-sandbox.mjs   CLI entry point
+
+src/
+  index.mjs                  runAction() — main API
+  spawn-deno.mjs             Deno process spawning with sandbox flags
+  sandbox-host.mjs           RPC host bridge (reads requests, writes responses)
+  handlers/
+    fetch.mjs                HTTP fetch handler (passthrough to Node.js fetch)
+    sign-jwt.mjs             JWT signing with ephemeral RSA key
+    ldap.mjs                 LDAP operations via ldapts
+
+shim/
+  shim.js                    Deno sandbox entry — loads bundle, proxies APIs
+  transport.js               stdin/stdout IPC transport layer
+  fetch-shim.js              fetch() replacement that routes through IPC
+  http-shim.js               Node.js http module shim for SDK compatibility
+  ldap-shim.js               ldapts module shim that routes through IPC
+  process-shim.js            Minimal process object shim
+  spec.json                  Import map for Deno
+```
 
 ## Development
 
-### Local Testing
-
 ```bash
-# Run the script locally with mock data
-npm run dev
-
-# Run unit tests
+# Run tests
 npm test
 
-# Watch mode for development
-npm run test:watch
-npm run build:watch
-
-# Validate metadata
-npm run validate
-
-# Lint code
-npm run lint
-npm run lint:fix
+# Run a single test file
+node --test tests/integration.test.mjs
 ```
 
-### File Structure
+## License
 
-- `src/script.mjs` - Main job implementation (⚠️ **Edit this!**)
-- `metadata.yaml` - Job schema and configuration (⚠️ **Edit this!**)
-- `tests/script.test.js` - Unit tests
-- `dist/index.js` - Built script (generated by `npm run build`)
-- `scripts/` - Development utilities
-
-## Implementation Checklist
-
-### Required Changes
-
-- [ ] **Update job name** and description in `metadata.yaml`
-- [ ] **Define input parameters** in `metadata.yaml` 
-- [ ] **Define output schema** in `metadata.yaml`
-- [ ] **Implement `invoke` handler** in `src/script.mjs`
-- [ ] **Update test mock data** in `tests/script.test.js`
-- [ ] **Update README** with job-specific documentation
-
-### Optional Enhancements
-
-- [ ] Implement `error` handler for error recovery
-- [ ] Implement `halt` handler for graceful shutdown
-- [ ] Add additional test cases
-- [ ] Customize development runner in `scripts/dev-runner.js`
-
-## Event Handlers
-
-Your script must export a default object with these handlers:
-
-### `invoke` (Required)
-Main execution logic for your job.
-
-```javascript
-invoke: async (params, context) => {
-  // Your job logic here
-  return {
-    status: 'success',
-    // ... other outputs
-  };
-}
-```
-
-### `error` (Optional)
-Error recovery logic when `invoke` fails.
-
-```javascript
-error: async (params, context) => {
-  // params.error contains the original error
-  // Attempt recovery or cleanup
-  return {
-    status: 'recovered',
-    // ... recovery results
-  };
-}
-```
-
-### `halt` (Optional)  
-Graceful shutdown when job is cancelled or times out.
-
-```javascript
-halt: async (params, context) => {
-  // params.reason contains halt reason
-  // Clean up resources, save partial progress
-  return {
-    status: 'halted',
-    cleanup_completed: true
-  };
-}
-```
-
-## Context Object
-
-The `context` parameter provides access to:
-
-```javascript
-{
-  env: {
-    ENVIRONMENT: "production",
-    // ... other environment variables
-  },
-  secrets: {
-    API_KEY: "secret-key",
-    // ... other secrets
-  },
-  outputs: {
-    "previous-job-step": {
-      // ... outputs from previous jobs in workflow
-    }
-  }
-}
-```
-
-## Testing
-
-### Unit Tests
-
-Tests are in `tests/script.test.js`. Update the mock data to match your job's inputs:
-
-```javascript
-const params = {
-  target: 'your-target',
-  action: 'your-action'
-  // ... other inputs
-};
-```
-
-### Local Development
-
-Use `npm run dev` to test your script locally with mock data. Update `scripts/dev-runner.js` to customize the test parameters.
-
-## Deployment
-
-1. **Ensure tests pass**: `npm test`
-2. **Validate metadata**: `npm run validate`  
-3. **Build distribution**: `npm run build`
-4. **Create git tag**: `git tag v1.0.0`
-5. **Push to GitHub**: `git push origin v1.0.0`
-
-## Usage in SGNL
-
-Reference your job in a JobSpec:
-
-```json
-{
-  "id": "my-job-123",
-  "type": "nodejs-20",
-  "script": {
-    "repository": "github.com/your-org/your-job-repo",
-    "version": "v1.0.0",
-    "type": "nodejs"
-  },
-  "script_inputs": {
-    "target": "user@example.com",
-    "action": "create"
-  },
-  "environment": {
-    "ENVIRONMENT": "production"
-  }
-}
-```
-
-## Support
-
+MIT
