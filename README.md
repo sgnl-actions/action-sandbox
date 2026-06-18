@@ -5,7 +5,7 @@ Run SGNL action bundles in a Deno sandbox with production-equivalent permission 
 ## Prerequisites
 
 - **Node.js** >= 20
-- **Deno** >= 2.x ([install](https://deno.land/#installation))
+- **Docker** (the sandbox runs inside a container with Deno pre-installed)
 
 ## Usage
 
@@ -64,34 +64,35 @@ npx sgnl-sandbox-test --common  # include common error scenarios
 ## How It Works
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│  Host (Node.js)                                             │
-│                                                             │
-│  runAction()                                                │
-│    ├── Spawns Deno with sandbox flags                       │
-│    ├── Sends init message (handler, params, context)        │
-│    └── Sandbox Host (reads RPC from stdout, responds stdin) │
-│          ├── fetch  → nock interceptor or real HTTP          │
-│          ├── signJWT → ephemeral RSA-2048 signing           │
-│          └── ldap   → real ldapts or fixture mock           │
-│                                                             │
-├─────────────────────────────────────────────────────────────┤
-│  Deno Sandbox (isolated subprocess)                         │
-│                                                             │
-│  Permissions:                                               │
-│    --deny-net --deny-run --deny-env                         │
-│    --allow-read=<shim>,<bundle>                             │
-│    --no-prompt --cached-only                                │
-│                                                             │
-│  shim.js                                                    │
-│    ├── Loads bundle via require()                           │
-│    ├── Calls module.exports[handler](params, context)       │
-│    ├── Proxies fetch/crypto/ldap through IPC to host        │
-│    └── Returns result as __RESULT__<json> on stdout         │
-└─────────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────┐
+│  Test Runner (Node.js)                                       │
+│                                                              │
+│  runAction() / ContainerSession                              │
+│    ├── Starts Docker container (sandbox-runner image)        │
+│    └── Streams scenarios via NDJSON on stdin/stdout          │
+│                                                              │
+├──────────────────────────────────────────────────────────────┤
+│  Docker Container                                            │
+│                                                              │
+│  Host Bridge (src/host/main.mjs)                             │
+│    ├── Receives scenario messages from test runner           │
+│    ├── Spawns Deno with sandbox flags + fifo IPC             │
+│    └── RPC Dispatcher (handles calls from Deno shim)         │
+│          ├── fetch   → fixture-based HTTP matching           │
+│          ├── signJWT → ephemeral RSA-2048 signing            │
+│          └── ldap    → fixture-based LDAP matching           │
+│                                                              │
+│  Deno Sandbox (isolated subprocess)                          │
+│    Permissions: --deny-net --deny-run --deny-env             │
+│    shim/mod.ts                                               │
+│      ├── Loads bundle via require()                          │
+│      ├── Calls module.exports[handler](params, context)      │
+│      ├── Proxies fetch/crypto/ldap through fifo IPC to host  │
+│      └── Returns result on fd3                               │
+└──────────────────────────────────────────────────────────────┘
 ```
 
-The Deno subprocess runs with strict permission denial. Any attempt by action code to access the network, spawn processes, or read environment variables is blocked at the OS level. All external calls go through the shim's IPC layer back to the Node.js host.
+The Deno subprocess runs with strict permission denial inside a Docker container. Any attempt by action code to access the network, spawn processes, or read environment variables is blocked at the OS level. All external calls go through the shim's IPC layer back to the host bridge, which resolves them against fixture data.
 
 ## API Reference
 
@@ -128,26 +129,34 @@ bin/
 
 src/
   index.mjs                  runAction() — main API
-  spawn-deno.mjs             Deno process spawning with sandbox flags
-  sandbox-host.mjs           RPC host bridge (reads requests, writes responses)
-  handlers/
-    fetch.mjs                HTTP fetch handler (passthrough to Node.js fetch)
-    sign-jwt.mjs             JWT signing with ephemeral RSA key
-    ldap.mjs                 LDAP operations via ldapts
+  container-session.mjs      Docker container lifecycle (start/run/stop)
+  host/
+    main.mjs                 NDJSON stdin/stdout loop (container entrypoint)
+    runner.mjs               runScenario() — Deno spawn, fifo setup, output collection
+    rpc.mjs                  createRPCDispatcher() — routes RPC calls to handlers
+    constants.mjs            Shared paths (SHIM_DIR, DENO_BIN, FIFOs)
+    handlers/
+      fetch.mjs              HTTP fetch handler (fixture matching)
+      jwt.mjs                JWT signing with ephemeral RSA key
+      ldap.mjs               LDAP handler (fixture matching)
 
 shim/
-  shim.js                    Deno sandbox entry — loads bundle, proxies APIs
-  transport.js               stdin/stdout IPC transport layer
-  fetch-shim.js              fetch() replacement that routes through IPC
-  http-shim.js               Node.js http module shim for SDK compatibility
-  ldap-shim.js               ldapts module shim that routes through IPC
-  process-shim.js            Minimal process object shim
-  spec.json                  Import map for Deno
+  mod.ts                     Deno sandbox entry — loads bundle, proxies APIs
+  ipc.ts                     Fifo-based IPC transport layer
+  callbacks.ts               RPC callback registry
+  console.ts                 Console shim for action logging
+  helpers.ts                 Shared utilities
+  require.ts                 CommonJS require() polyfill for Deno
+  types.ts                   Shared type definitions
+  sandboxrpc.gen.ts          Generated RPC protocol types
 ```
 
 ## Development
 
 ```bash
+# Build the Docker image locally
+docker build -t ghcr.io/sgnl-actions/sandbox-runner:latest .
+
 # Run tests
 npm test
 
