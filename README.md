@@ -7,12 +7,6 @@ Run SGNL action bundles in a Deno sandbox with production-equivalent permission 
 - **Node.js** >= 20
 - **Deno** >= 2.x ([install](https://deno.land/#installation))
 
-## Installation
-
-```bash
-npm install @sgnl-actions/action-sandbox
-```
-
 ## Usage
 
 ### CLI
