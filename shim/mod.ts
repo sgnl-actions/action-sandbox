@@ -20,6 +20,7 @@ import { createIPC } from "./ipc.ts";
 import { createProxiedFetch, createProxiedCrypto, createLdaptsProxy } from "./callbacks.ts";
 import { createConsole } from "./console.ts";
 import { createRequire } from "./require.ts";
+import { createHttpShim } from "./http-shim.ts";
 import { readAllStream, writeResult } from "./helpers.ts";
 
 const encoder = new TextEncoder();
@@ -88,7 +89,23 @@ async function main(): Promise<void> {
   const proxiedFetch = createProxiedFetch(ipc.rpcCall, metadata);
   const proxiedCrypto = createProxiedCrypto(ipc.rpcCall);
   const ldaptsProxy = createLdaptsProxy(ipc.rpcCall, metadata);
-  const requireFn = createRequire(ldaptsProxy, Buffer);
+
+  // Restricted process object matching sandbox.js contract (needed by AWS SDK and others).
+  const processShim = {
+    env: {},
+    cwd: () => "/app",
+    version: "v22.0.0",
+    versions: { node: "22.0.0" },
+    hrtime: () => [0, 0],
+    emitWarning: () => {},
+    geteuid: () => 1000,
+  };
+
+  const requireFn = createRequire(
+    ldaptsProxy, Buffer, processShim,
+    createHttpShim(proxiedFetch, "http:"),
+    createHttpShim(proxiedFetch, "https:"),
+  );
 
   // Create CJS module wrapper.
   const moduleObj = { exports: {} as Record<string, unknown> };
@@ -110,15 +127,44 @@ async function main(): Promise<void> {
       "process", "Deno", "globalThis",
     ];
 
-    // Restricted process object matching sandbox.js contract (needed by AWS SDK and others).
-    const processShim = {
-      env: {},
-      cwd: () => "/app",
-      version: "v22.0.0",
-      versions: { node: "22.0.0" },
-      hrtime: () => [0, 0],
-      emitWarning: () => {},
-      geteuid: () => 1000,
+    // Restricted globalThis that provides only safe globals (no Deno, no real process).
+    const sandboxGlobalThis = {
+      setTimeout: globalThis.setTimeout,
+      setInterval: globalThis.setInterval,
+      clearTimeout: globalThis.clearTimeout,
+      clearInterval: globalThis.clearInterval,
+      Promise: globalThis.Promise,
+      URL: globalThis.URL,
+      URLSearchParams: globalThis.URLSearchParams,
+      TextEncoder: globalThis.TextEncoder,
+      TextDecoder: globalThis.TextDecoder,
+      AbortController: globalThis.AbortController,
+      AbortSignal: globalThis.AbortSignal,
+      btoa: globalThis.btoa,
+      atob: globalThis.atob,
+      Object: globalThis.Object,
+      Array: globalThis.Array,
+      String: globalThis.String,
+      Number: globalThis.Number,
+      Boolean: globalThis.Boolean,
+      Date: globalThis.Date,
+      Math: globalThis.Math,
+      JSON: globalThis.JSON,
+      parseInt: globalThis.parseInt,
+      parseFloat: globalThis.parseFloat,
+      isNaN: globalThis.isNaN,
+      isFinite: globalThis.isFinite,
+      encodeURIComponent: globalThis.encodeURIComponent,
+      decodeURIComponent: globalThis.decodeURIComponent,
+      structuredClone: globalThis.structuredClone,
+      Headers: globalThis.Headers,
+      Request: globalThis.Request,
+      Response: globalThis.Response,
+      Buffer,
+      console: sandboxConsole,
+      fetch: proxiedFetch,
+      crypto: proxiedCrypto,
+      process: processShim,
     };
 
     const paramValues = [
@@ -132,7 +178,7 @@ async function main(): Promise<void> {
       globalThis.encodeURIComponent, globalThis.decodeURIComponent, globalThis.structuredClone,
       globalThis.Headers, globalThis.Request, globalThis.Response,
       inputs || {}, outputs || {}, secrets || {}, environment || {}, data || {},
-      processShim, undefined, undefined,
+      processShim, undefined, sandboxGlobalThis,
     ];
 
     const wrappedScript = `(function(${paramNames.join(", ")}) {\n${script}\n})`;
