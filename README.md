@@ -36,14 +36,14 @@ sgnl-action-sandbox dist/index.js -i '{}' --timeout 60000
 ### Programmatic API
 
 ```javascript
-import { runAction } from '@sgnl-actions/action-sandbox';
+import { runAction } from "@sgnl-actions/action-sandbox";
 
 const result = await runAction({
-  bundle: 'dist/index.js',
-  inputs: { userId: '123' },
-  secrets: { API_KEY: 'sk-...' },
-  environment: { BASE_URL: 'https://api.example.com' },
-  handler: 'invoke',
+  bundle: "dist/index.js",
+  inputs: { userId: "123" },
+  secrets: { API_KEY: "sk-..." },
+  environment: { BASE_URL: "https://api.example.com" },
+  handler: "invoke",
   timeout: 30000,
   verbose: false,
 });
@@ -98,16 +98,16 @@ The Deno subprocess runs with strict permission denial inside a Docker container
 
 ### `runAction(options)`
 
-| Option | Type | Default | Description |
-|--------|------|---------|-------------|
-| `bundle` | `string` | (required) | Path to the bundled action JS file |
-| `inputs` | `object` | `{}` | Action input parameters |
-| `secrets` | `object` | `{}` | Secret values (API keys, tokens) |
-| `environment` | `object` | `{}` | Environment data |
-| `handler` | `string` | `'invoke'` | Handler to call: `invoke`, `error`, or `halt` |
-| `timeout` | `number` | `30000` | Timeout in milliseconds |
-| `verbose` | `boolean` | `false` | Show Deno stderr output |
-| `ldapFixtures` | `Array\|null` | `null` | LDAP fixture data (disables real LDAP) |
+| Option         | Type          | Default    | Description                                   |
+| -------------- | ------------- | ---------- | --------------------------------------------- |
+| `bundle`       | `string`      | (required) | Path to the bundled action JS file            |
+| `inputs`       | `object`      | `{}`       | Action input parameters                       |
+| `secrets`      | `object`      | `{}`       | Secret values (API keys, tokens)              |
+| `environment`  | `object`      | `{}`       | Environment data                              |
+| `handler`      | `string`      | `'invoke'` | Handler to call: `invoke`, `error`, or `halt` |
+| `timeout`      | `number`      | `30000`    | Timeout in milliseconds                       |
+| `verbose`      | `boolean`     | `false`    | Show Deno stderr output                       |
+| `ldapFixtures` | `Array\|null` | `null`     | LDAP fixture data (disables real LDAP)        |
 
 Returns a `Promise` that resolves with the action's return value, or rejects if the action throws, times out, or fails to spawn.
 
@@ -115,41 +115,11 @@ Returns a `Promise` that resolves with the action's return value, or rejects if 
 
 The sandbox shim proxies these calls from action code to the host:
 
-| Method | Description |
-|--------|-------------|
-| `fetch` | HTTP requests — intercepted by nock in test mode, or passed through to real HTTP |
-| `signJWT` | JWT signing — uses an ephemeral RSA-2048 key pair |
-| `ldap` | LDAP operations — uses real `ldapts` client or fixture responses |
-
-## File Structure
-
-```
-bin/
-  sgnl-action-sandbox.mjs   CLI entry point
-
-src/
-  index.mjs                  runAction() — main API
-  container-session.mjs      Docker container lifecycle (start/run/stop)
-  host/
-    main.mjs                 NDJSON stdin/stdout loop (container entrypoint)
-    runner.mjs               runScenario() — Deno spawn, fifo setup, output collection
-    rpc.mjs                  createRPCDispatcher() — routes RPC calls to handlers
-    constants.mjs            Shared paths (SHIM_DIR, DENO_BIN, FIFOs)
-    handlers/
-      fetch.mjs              HTTP fetch handler (fixture matching)
-      jwt.mjs                JWT signing with ephemeral RSA key
-      ldap.mjs               LDAP handler (fixture matching)
-
-shim/
-  mod.ts                     Deno sandbox entry — loads bundle, proxies APIs
-  ipc.ts                     Fifo-based IPC transport layer
-  callbacks.ts               RPC callback registry
-  console.ts                 Console shim for action logging
-  helpers.ts                 Shared utilities
-  require.ts                 CommonJS require() polyfill for Deno
-  types.ts                   Shared type definitions
-  sandboxrpc.gen.ts          Generated RPC protocol types
-```
+| Method    | Description                                                                      |
+| --------- | -------------------------------------------------------------------------------- |
+| `fetch`   | HTTP requests — intercepted by nock in test mode, or passed through to real HTTP |
+| `signJWT` | JWT signing — uses an ephemeral RSA-2048 key pair                                |
+| `ldap`    | LDAP operations — uses real `ldapts` client or fixture responses                 |
 
 ## Development
 
