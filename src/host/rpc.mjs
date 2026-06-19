@@ -1,10 +1,10 @@
 import { signJWT } from './handlers/jwt.mjs';
 
 export function createRPCDispatcher(fetchHandler, ldapHandler) {
-  return async function dispatch(method, params) {
+  return function dispatch(method, params) {
     switch (method) {
       case 'fetch':
-        return await fetchHandler(params);
+        return fetchHandler(params);
       case 'signJWT':
         return signJWT(params);
       case 'ldap':

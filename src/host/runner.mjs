@@ -84,7 +84,7 @@ export async function runScenario(scenario) {
   // Handle RPC requests from fd4 and write responses to fd3
   const rpcReader = createInterface({ input: fd4ReadStream });
 
-  rpcReader.on('line', async (line) => {
+  rpcReader.on('line', (line) => {
     if (!line.trim()) return;
 
     let request;
@@ -101,7 +101,7 @@ export async function runScenario(scenario) {
       process.stderr.write(`[rpc] ${method}(${JSON.stringify(params).slice(0, 200)})\n`);
     }
 
-    const result = await dispatch(method, params || {});
+    const result = dispatch(method, params || {});
 
     let response;
     if (result && result.error) {
