@@ -1,6 +1,7 @@
 // Proxied API callbacks that route through JSON-RPC to the Go worker.
 
 import { Buffer } from "node:buffer";
+import { Readable, Writable } from "node:stream";
 import type { RPCResponse, FetchParams, FetchResult, SignJWTParams, SignJWTResult, LdapParams, LdapResult } from "./types.ts";
 
 type RpcCallFn = (method: string, params: Record<string, unknown>) => Promise<RPCResponse>;
@@ -14,6 +15,12 @@ const HTTP_STATUS_TEXT: Record<number, string> = {
   500: "Internal Server Error", 502: "Bad Gateway", 503: "Service Unavailable",
   504: "Gateway Timeout",
 };
+
+interface HttpResult {
+  status: number;
+  headers: Record<string, string>;
+  body?: string;
+}
 
 /** Create a proxied fetch that routes HTTP through the Go worker. */
 export function createProxiedFetch(rpcCall: RpcCallFn, metadata: Record<string, unknown>) {
@@ -231,4 +238,170 @@ export function createLdaptsProxy(rpcCall: RpcCallFn, metadata: Record<string, u
   }
 
   return { Client, Change, Attribute };
+}
+
+// --- node:http / node:https shim ---
+
+class IncomingMessage extends Readable {
+  statusCode: number;
+  statusMessage: string;
+  headers: Record<string, string>;
+  #body: Buffer;
+  #pushed = false;
+
+  constructor(statusCode: number, headers: Record<string, string>, body: Buffer) {
+    super();
+    this.statusCode = statusCode;
+    this.statusMessage = HTTP_STATUS_TEXT[statusCode] || "";
+    this.headers = headers;
+    this.#body = body;
+  }
+
+  _read(): void {
+    if (!this.#pushed) {
+      this.#pushed = true;
+      this.push(this.#body);
+      this.push(null);
+    }
+  }
+}
+
+class ClientRequest extends Writable {
+  #options: Record<string, unknown>;
+  #body: Buffer[] = [];
+  #rpcCall: RpcCallFn;
+  #defaultProtocol: string;
+
+  constructor(options: Record<string, unknown>, rpcCall: RpcCallFn, defaultProtocol: string) {
+    super();
+    this.#options = options;
+    this.#rpcCall = rpcCall;
+    this.#defaultProtocol = defaultProtocol;
+  }
+
+  _write(chunk: Buffer | string, _encoding: string, callback: () => void): void {
+    this.#body.push(Buffer.from(chunk));
+    callback();
+  }
+
+  write(chunk: string | Uint8Array, encodingOrCb?: string | (() => void), cb?: () => void): boolean {
+    const callback = typeof encodingOrCb === "function" ? encodingOrCb : (cb || (() => {}));
+    this.#body.push(Buffer.from(chunk));
+    if (typeof callback === "function") queueMicrotask(callback);
+    return true;
+  }
+
+  end(chunk?: string | Uint8Array | (() => void), _encodingOrCb?: string | (() => void), _cb?: () => void): this {
+    if (typeof chunk === "function") {
+      // end(callback)
+    } else if (chunk) {
+      this.#body.push(Buffer.from(chunk as string | Uint8Array));
+    }
+
+    const opts = this.#options;
+    const protocol = (opts.protocol as string) || this.#defaultProtocol;
+    const hostname = (opts.hostname || opts.host || "localhost") as string;
+    const hostOnly = hostname.includes(":") ? hostname.split(":")[0] : hostname;
+    const port = opts.port ? Number(opts.port) : undefined;
+    const path = (opts.path || "/") as string;
+    const method = ((opts.method || "GET") as string).toUpperCase();
+    const headers = (opts.headers || {}) as Record<string, string>;
+    const body = this.#body.length > 0
+      ? Buffer.concat(this.#body).toString("base64")
+      : undefined;
+
+    this.#rpcCall("http", {
+      protocol,
+      hostname: hostOnly,
+      port,
+      path,
+      method,
+      headers,
+      body,
+    })
+      .then((resp) => {
+        if (resp.error) {
+          this.emit("error", new Error(resp.error.message));
+          return;
+        }
+
+        const result = resp.result as unknown as HttpResult;
+        const respBody = result.body
+          ? Buffer.from(result.body, "base64")
+          : Buffer.alloc(0);
+
+        const msg = new IncomingMessage(result.status, result.headers || {}, respBody);
+        this.emit("response", msg);
+      })
+      .catch((err) => {
+        this.emit("error", err);
+      });
+
+    return this;
+  }
+
+  setTimeout(_ms: number, _cb?: () => void): this { return this; }
+  destroy(): this { return this; }
+  abort(): void {}
+  setNoDelay(): this { return this; }
+  setSocketKeepAlive(): this { return this; }
+  setHeader(_name: string, _value: string): this { return this; }
+  getHeader(_name: string): string | undefined { return undefined; }
+  removeHeader(_name: string): void {}
+  flushHeaders(): void {}
+}
+
+/** Create a proxied http/https module that routes through the "http" RPC method. */
+export function createProxiedHttp(rpcCall: RpcCallFn, defaultProtocol = "https:") {
+  function request(urlOrOptions: string | URL | Record<string, unknown>, optionsOrCb?: Record<string, unknown> | ((res: IncomingMessage) => void), cb?: (res: IncomingMessage) => void) {
+    let options: Record<string, unknown>;
+
+    if (typeof urlOrOptions === "string" || urlOrOptions instanceof URL) {
+      const parsed = new URL(urlOrOptions.toString());
+      options = {
+        protocol: parsed.protocol,
+        hostname: parsed.hostname,
+        port: parsed.port,
+        path: parsed.pathname + parsed.search,
+        method: "GET",
+        headers: {},
+        ...(typeof optionsOrCb === "object" ? optionsOrCb : {}),
+      };
+      if (typeof optionsOrCb === "function") cb = optionsOrCb;
+    } else {
+      options = urlOrOptions;
+      if (typeof optionsOrCb === "function") cb = optionsOrCb;
+    }
+
+    const req = new ClientRequest(options, rpcCall, defaultProtocol);
+    if (cb) req.on("response", cb);
+    return req;
+  }
+
+  function get(urlOrOptions: string | URL | Record<string, unknown>, optionsOrCb?: Record<string, unknown> | ((res: IncomingMessage) => void), cb?: (res: IncomingMessage) => void) {
+    const req = request(urlOrOptions, optionsOrCb, cb);
+    req.end();
+    return req;
+  }
+
+  class Agent {
+    maxSockets = Infinity;
+    maxFreeSockets = 256;
+    options: Record<string, unknown>;
+    constructor(opts?: Record<string, unknown>) {
+      this.options = opts || {};
+    }
+    destroy(): void {}
+  }
+
+  return {
+    request,
+    get,
+    Agent,
+    globalAgent: new Agent(),
+    METHODS: ["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD", "OPTIONS"],
+    STATUS_CODES: HTTP_STATUS_TEXT,
+    IncomingMessage,
+    ClientRequest,
+  };
 }

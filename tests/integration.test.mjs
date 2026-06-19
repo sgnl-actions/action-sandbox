@@ -35,8 +35,8 @@ describe('runAction integration (container)', () => {
     assert.ok(result.timestamp);
   });
 
-  it('calls error handler when invoke throws (production behavior)', async () => {
-    // The production shim always calls invoke first.
+  it('calls error handler when invoke throws', async () => {
+    // The shim always calls invoke first.
     // If invoke throws AND module.exports.error exists, it calls error handler.
     // The hello bundle throws when name is missing, and has an error handler
     // that returns { recovered: true } for recoverable errors.

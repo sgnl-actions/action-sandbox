@@ -47,7 +47,7 @@ export async function runScenario(scenario) {
     stdio: ['pipe', 'pipe', 'pipe'],
   });
 
-  // Build payload matching production format
+  // Build payload matching format
   const denoPayload = {
     script,
     inputs: inputs || {},

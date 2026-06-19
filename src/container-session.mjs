@@ -5,7 +5,7 @@ const DEFAULT_IMAGE = 'ghcr.io/sgnl-actions/sandbox-runner:latest';
 
 /**
  * Manages a long-lived Docker container that runs action bundles through
- * the production Deno shim. One container stays alive for the entire test
+ * the Deno shim. One container stays alive for the entire test
  * session; scenarios are streamed via NDJSON on stdin/stdout.
  */
 export class ContainerSession {

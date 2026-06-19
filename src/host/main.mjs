@@ -1,7 +1,7 @@
 // src/host/main.mjs — Host bridge entrypoint for the sandbox container.
 //
 // Runs inside a Linux container. Accepts scenarios via NDJSON on stdin,
-// spawns Deno with the production shim (fd3/fd4 IPC), handles RPC requests
+// spawns Deno with the shim (fd3/fd4 IPC), handles RPC requests
 // using fixture data, and returns results on stdout.
 //
 // Protocol:

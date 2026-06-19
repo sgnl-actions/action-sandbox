@@ -17,10 +17,9 @@
 import { Buffer } from "node:buffer";
 import type { Payload } from "./types.ts";
 import { createIPC } from "./ipc.ts";
-import { createProxiedFetch, createProxiedCrypto, createLdaptsProxy } from "./callbacks.ts";
+import { createProxiedFetch, createProxiedCrypto, createLdaptsProxy, createProxiedHttp } from "./callbacks.ts";
 import { createConsole } from "./console.ts";
 import { createRequire } from "./require.ts";
-import { createHttpShim } from "./http-shim.ts";
 import { readAllStream, writeResult } from "./helpers.ts";
 
 const encoder = new TextEncoder();
@@ -89,6 +88,8 @@ async function main(): Promise<void> {
   const proxiedFetch = createProxiedFetch(ipc.rpcCall, metadata);
   const proxiedCrypto = createProxiedCrypto(ipc.rpcCall);
   const ldaptsProxy = createLdaptsProxy(ipc.rpcCall, metadata);
+  const proxiedHttp = createProxiedHttp(ipc.rpcCall, "http:");
+  const proxiedHttps = createProxiedHttp(ipc.rpcCall, "https:");
 
   // Restricted process object matching sandbox.js contract (needed by AWS SDK and others).
   const processShim = {
@@ -103,8 +104,8 @@ async function main(): Promise<void> {
 
   const requireFn = createRequire(
     ldaptsProxy, Buffer, processShim,
-    createHttpShim(proxiedFetch, "http:"),
-    createHttpShim(proxiedFetch, "https:"),
+    proxiedHttp,
+    proxiedHttps,
   );
 
   // Create CJS module wrapper.
