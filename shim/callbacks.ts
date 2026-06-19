@@ -237,7 +237,70 @@ export function createLdaptsProxy(rpcCall: RpcCallFn, metadata: Record<string, u
     }
   }
 
-  return { Client, Change, Attribute };
+  // LDAP filter classes — serialize to RFC 4515 filter strings for search operations.
+  class EqualityFilter {
+    attribute: string;
+    value: string | Uint8Array;
+    constructor(options: { attribute: string; value: string | Uint8Array }) {
+      this.attribute = options.attribute;
+      this.value = options.value;
+    }
+    toString(): string {
+      if (this.value instanceof Uint8Array || Buffer.isBuffer(this.value)) {
+        const hex = Buffer.from(this.value).toString("hex").replace(/../g, "\\$&");
+        return `(${this.attribute}=${hex})`;
+      }
+      return `(${this.attribute}=${this.value})`;
+    }
+  }
+
+  class AndFilter {
+    filters: { toString(): string }[];
+    constructor(options: { filters: { toString(): string }[] }) {
+      this.filters = options.filters;
+    }
+    toString(): string {
+      return `(&${this.filters.map(f => f.toString()).join("")})`;
+    }
+  }
+
+  class OrFilter {
+    filters: { toString(): string }[];
+    constructor(options: { filters: { toString(): string }[] }) {
+      this.filters = options.filters;
+    }
+    toString(): string {
+      return `(|${this.filters.map(f => f.toString()).join("")})`;
+    }
+  }
+
+  class SubstringFilter {
+    attribute: string;
+    initial: string;
+    any: string[];
+    final: string;
+    constructor(options: { attribute: string; initial?: string; any?: string[]; final?: string }) {
+      this.attribute = options.attribute;
+      this.initial = options.initial || "";
+      this.any = options.any || [];
+      this.final = options.final || "";
+    }
+    toString(): string {
+      return `(${this.attribute}=${this.initial}*${this.any.join("*")}*${this.final})`;
+    }
+  }
+
+  class PresenceFilter {
+    attribute: string;
+    constructor(options: { attribute: string }) {
+      this.attribute = options.attribute;
+    }
+    toString(): string {
+      return `(${this.attribute}=*)`;
+    }
+  }
+
+  return { Client, Change, Attribute, EqualityFilter, AndFilter, OrFilter, SubstringFilter, PresenceFilter };
 }
 
 // --- node:http / node:https shim ---
