@@ -16,8 +16,7 @@ jobs:
         with:
           node-version: 22
           registry-url: https://registry.npmjs.org
-       # TODO: Update this to not remove once all dependent packages are approved in artifactory.
-      - run: rm -f package-lock.json && npm install
+      - run: npm ci
       - name: Build sandbox container
         run: docker build -t ghcr.io/sgnl-actions/sandbox-runner:latest .
       - run: npm test
