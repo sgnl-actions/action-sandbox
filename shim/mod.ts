@@ -14,6 +14,8 @@
 // Payload is delivered via stdin as a single JSON object.
 // Result is written to stdout as a single JSON line on completion.
 
+const tBoot = performance.now();
+
 import { Buffer } from "node:buffer";
 import type { Payload } from "./types.ts";
 import { createIPC } from "./ipc.ts";
@@ -26,32 +28,35 @@ const encoder = new TextEncoder();
 
 /** Emit a structured infrastructure log to stderr. */
 function logInfraError(message: string): void {
-  const entry = JSON.stringify({
-    timestamp: Date.now(),
-    level: "error",
-    type: "infrastructure",
-    message,
-  }) + "\n";
+  const entry =
+    JSON.stringify({
+      timestamp: Date.now(),
+      level: "error",
+      type: "infrastructure",
+      message
+    }) + "\n";
   Deno.stderr.writeSync(encoder.encode(entry));
 }
 
 async function main(): Promise<void> {
+  const t0 = performance.now();
+
   // Open inherited file descriptors for IPC with the Go worker.
   const fd3 = Deno.openSync("/dev/fd/3", { read: true });
   const fd4 = Deno.openSync("/dev/fd/4", { write: true });
 
-  const ipc = createIPC(
-    fd3.readable.getReader(),
-    fd4,
-    logInfraError,
-  );
+  const ipc = createIPC(fd3.readable.getReader(), fd4, logInfraError);
 
   // Start reading responses in the background.
   const responseLoop = ipc.readResponses();
 
+  const t1 = performance.now();
+
   // Read payload from stdin (Go closes stdin after writing).
   const stdinBytes = await readAllStream(Deno.stdin.readable.getReader());
   const payloadStr = new TextDecoder().decode(stdinBytes);
+
+  const t2 = performance.now();
 
   let payload: Payload;
   try {
@@ -60,6 +65,8 @@ async function main(): Promise<void> {
     writeResult({ success: false, error: `Failed to parse stdin payload: ${(e as Error).message}` });
     Deno.exit(1);
   }
+
+  const t3 = performance.now();
 
   const {
     script,
@@ -74,7 +81,7 @@ async function main(): Promise<void> {
     tenantId,
     clientId,
     jobType,
-    workflowId,
+    workflowId
   } = payload;
 
   // Set up timeout enforcement (backup — Go also enforces via SIGTERM).
@@ -99,93 +106,71 @@ async function main(): Promise<void> {
     versions: { node: "22.0.0" },
     hrtime: () => [0, 0],
     emitWarning: () => {},
-    geteuid: () => 1000,
+    geteuid: () => 1000
   };
 
-  const requireFn = createRequire(
-    ldaptsProxy, Buffer, processShim,
-    proxiedHttp,
-    proxiedHttps,
-  );
+  const requireFn = createRequire(ldaptsProxy, Buffer, processShim, proxiedHttp, proxiedHttps);
 
   // Create CJS module wrapper.
   const moduleObj = { exports: {} as Record<string, unknown> };
   const exportsObj = moduleObj.exports;
 
+  const t4 = performance.now();
   try {
-    // Wrap the CJS bundle in a function that injects sandbox globals,
-    // shadowing any Deno globals the script might try to access.
-    const paramNames = [
-      "module", "exports", "require", "console", "fetch", "crypto", "Buffer",
-      "setTimeout", "setInterval", "clearTimeout", "clearInterval",
-      "Promise", "URL", "URLSearchParams", "TextEncoder", "TextDecoder",
-      "AbortController", "AbortSignal", "btoa", "atob",
-      "Object", "Array", "String", "Number", "Boolean", "Date", "Math", "JSON",
-      "parseInt", "parseFloat", "isNaN", "isFinite",
-      "encodeURIComponent", "decodeURIComponent", "structuredClone",
-      "Headers", "Request", "Response",
-      "inputs", "outputs", "secrets", "environment", "data",
-      "process", "Deno", "globalThis",
-    ];
-
-    // Restricted globalThis that provides only safe globals (no Deno, no real process).
-    const sandboxGlobalThis = {
-      setTimeout: globalThis.setTimeout,
-      setInterval: globalThis.setInterval,
-      clearTimeout: globalThis.clearTimeout,
-      clearInterval: globalThis.clearInterval,
-      Promise: globalThis.Promise,
-      URL: globalThis.URL,
-      URLSearchParams: globalThis.URLSearchParams,
-      TextEncoder: globalThis.TextEncoder,
-      TextDecoder: globalThis.TextDecoder,
-      AbortController: globalThis.AbortController,
-      AbortSignal: globalThis.AbortSignal,
-      btoa: globalThis.btoa,
-      atob: globalThis.atob,
-      Object: globalThis.Object,
-      Array: globalThis.Array,
-      String: globalThis.String,
-      Number: globalThis.Number,
-      Boolean: globalThis.Boolean,
-      Date: globalThis.Date,
-      Math: globalThis.Math,
-      JSON: globalThis.JSON,
-      parseInt: globalThis.parseInt,
-      parseFloat: globalThis.parseFloat,
-      isNaN: globalThis.isNaN,
-      isFinite: globalThis.isFinite,
-      encodeURIComponent: globalThis.encodeURIComponent,
-      decodeURIComponent: globalThis.decodeURIComponent,
-      structuredClone: globalThis.structuredClone,
-      Headers: globalThis.Headers,
-      Request: globalThis.Request,
-      Response: globalThis.Response,
-      Buffer,
-      console: sandboxConsole,
+    // Proxy-based globalThis: overrides dangerous/proxied APIs, blocks known-unsafe
+    // globals, and passes everything else through to the real globalThis.
+    const blockedGlobals = new Set(["Deno", "WebSocket", "Worker", "SharedWorker", "BroadcastChannel"]);
+    const overrides: Record<string, unknown> = {
       fetch: proxiedFetch,
       crypto: proxiedCrypto,
       process: processShim,
+      console: sandboxConsole,
+      Buffer
     };
+    const sandboxGlobalThis: typeof globalThis = new Proxy(globalThis, {
+      get(target, prop) {
+        if (prop === "globalThis") return sandboxGlobalThis;
+        if (Object.hasOwn(overrides, prop as string)) return overrides[prop as string];
+        if (blockedGlobals.has(prop as string)) return undefined;
+        return (target as Record<string | symbol, unknown>)[prop];
+      }
+    }) as typeof globalThis;
+
+    // Wrap the CJS bundle in a function that injects sandbox globals,
+    // shadowing any Deno globals the script might try to access.
+    const paramNames = [
+      "module",
+      "exports",
+      "require",
+      "console",
+      "fetch",
+      "crypto",
+      "Buffer",
+      "process",
+      "Deno",
+      "globalThis"
+    ];
 
     const paramValues = [
-      moduleObj, exportsObj, requireFn, sandboxConsole, proxiedFetch, proxiedCrypto, Buffer,
-      globalThis.setTimeout, globalThis.setInterval, globalThis.clearTimeout, globalThis.clearInterval,
-      globalThis.Promise, globalThis.URL, globalThis.URLSearchParams, globalThis.TextEncoder, globalThis.TextDecoder,
-      globalThis.AbortController, globalThis.AbortSignal, globalThis.btoa, globalThis.atob,
-      globalThis.Object, globalThis.Array, globalThis.String, globalThis.Number, globalThis.Boolean,
-      globalThis.Date, globalThis.Math, globalThis.JSON,
-      globalThis.parseInt, globalThis.parseFloat, globalThis.isNaN, globalThis.isFinite,
-      globalThis.encodeURIComponent, globalThis.decodeURIComponent, globalThis.structuredClone,
-      globalThis.Headers, globalThis.Request, globalThis.Response,
-      inputs || {}, outputs || {}, secrets || {}, environment || {}, data || {},
-      processShim, undefined, sandboxGlobalThis,
+      moduleObj,
+      exportsObj,
+      requireFn,
+      sandboxConsole,
+      proxiedFetch,
+      proxiedCrypto,
+      Buffer,
+      processShim,
+      undefined,
+      sandboxGlobalThis
     ];
 
     const wrappedScript = `(function(${paramNames.join(", ")}) {\n${script}\n})`;
 
     // deno-lint-ignore no-eval
     const scriptFn = eval(wrappedScript);
+
+    const t5 = performance.now();
+
     scriptFn(...paramValues);
 
     // Get the invoke handler from module.exports.
@@ -196,19 +181,30 @@ async function main(): Promise<void> {
       Deno.exit(1);
     }
 
+    const t6 = performance.now();
+
     // Call invoke with inputs and context (matches existing sandbox.js contract).
     const context = {
       outputs: outputs || {},
       secrets: secrets || {},
       environment: environment || {},
       data: data || {},
-      crypto: proxiedCrypto,
+      crypto: proxiedCrypto
     };
+    const result = await (invokeHandler as (params: unknown, ctx: unknown) => Promise<unknown>)(inputs || {}, context);
 
-    const result = await (invokeHandler as (params: unknown, ctx: unknown) => Promise<unknown>)(
-      inputs || {},
-      context,
-    );
+    const t7 = performance.now();
+
+    // Emit timing breakdown to stderr as structured log.
+    const timingEntry =
+      JSON.stringify({
+        timestamp: Date.now(),
+        level: "debug",
+        type: "infrastructure",
+        component: "deno-worker",
+        message: `Deno shim timings: bootMs=${+(t0 - tBoot).toFixed(2)} ipcSetupMs=${+(t1 - t0).toFixed(2)} stdinReadMs=${+(t2 - t1).toFixed(2)} jsonParseMs=${+(t3 - t2).toFixed(2)} sandboxSetupMs=${+(t4 - t3).toFixed(2)} evalMs=${+(t5 - t4).toFixed(2)} scriptInitMs=${+(t6 - t5).toFixed(2)} invokeMs=${+(t7 - t6).toFixed(2)} totalMs=${+(t7 - tBoot).toFixed(2)}`
+      }) + "\n";
+    Deno.stderr.writeSync(encoder.encode(timingEntry));
 
     clearTimeout(timeoutId);
     writeResult({ success: true, data: result });
@@ -225,22 +221,22 @@ async function main(): Promise<void> {
               message: (error as Error).message || String(error),
               code: (error as Record<string, unknown>).code || "SCRIPT_ERROR",
               stack: (error as Error).stack,
-              name: (error as Error).name,
-            },
+              name: (error as Error).name
+            }
           },
           {
             outputs: outputs || {},
             secrets: secrets || {},
             environment: environment || {},
             data: data || {},
-            crypto: proxiedCrypto,
-          },
+            crypto: proxiedCrypto
+          }
         );
 
         writeResult({
           success: false,
           error: (error as Error).message || String(error),
-          data: errorResult,
+          data: errorResult
         });
         Deno.exit(1);
       } catch {
@@ -265,3 +261,4 @@ main().catch((e) => {
   writeResult({ success: false, error: `Shim fatal error: ${(e as Error).message}` });
   Deno.exit(1);
 });
+
