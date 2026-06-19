@@ -2,7 +2,7 @@
 
 import { Buffer } from "node:buffer";
 import { Readable, Writable } from "node:stream";
-import type { RPCResponse, FetchParams, FetchResult, SignJWTParams, SignJWTResult, LdapParams, LdapResult } from "./types.ts";
+import type { RPCResponse, FetchParams, FetchResult, SignJWTParams, SignJWTResult, LdapParams, LdapResult, HttpResult } from "./types.ts";
 
 type RpcCallFn = (method: string, params: Record<string, unknown>) => Promise<RPCResponse>;
 
@@ -15,12 +15,6 @@ const HTTP_STATUS_TEXT: Record<number, string> = {
   500: "Internal Server Error", 502: "Bad Gateway", 503: "Service Unavailable",
   504: "Gateway Timeout",
 };
-
-interface HttpResult {
-  status: number;
-  headers: Record<string, string>;
-  body?: string;
-}
 
 /** Create a proxied fetch that routes HTTP through the Go worker. */
 export function createProxiedFetch(rpcCall: RpcCallFn, metadata: Record<string, unknown>) {

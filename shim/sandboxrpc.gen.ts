@@ -149,6 +149,51 @@ export interface LdapResult {
   success?: boolean;
 }
 
+export interface HttpParams {
+  /**
+   * URL protocol including trailing colon (e.g., "https:", "http:"). Defaults to "https:".
+   */
+  protocol?: string;
+  hostname: string;
+  /**
+   * Port number. Omitted or 0 means default port for the protocol.
+   */
+  port?: number;
+  /**
+   * Request path including query string (e.g., "/api/v1/users?limit=10").
+   */
+  path?: string;
+  method?: "GET" | "POST" | "PUT" | "PATCH" | "DELETE" | "HEAD";
+  headers?: {
+    [k: string]: string | undefined;
+  };
+  /**
+   * Base64-encoded request body.
+   */
+  body?: string;
+  /**
+   * Connector ID for routing through the connector service.
+   */
+  connector_id?: string;
+}
+
+export interface HttpResult {
+  /**
+   * HTTP status code.
+   */
+  status: number;
+  /**
+   * Response headers.
+   */
+  headers?: {
+    [k: string]: string | undefined;
+  };
+  /**
+   * Base64-encoded response body.
+   */
+  body?: string;
+}
+
 // RPC error codes.
 export const RPCErrorCodes = {
   InvalidRequest: -32600,
