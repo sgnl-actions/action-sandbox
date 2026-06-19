@@ -2,7 +2,7 @@ import { spawn, execSync } from 'node:child_process';
 import { createInterface } from 'node:readline';
 import { writeFileSync, unlinkSync, createReadStream, createWriteStream, open as fsOpen } from 'node:fs';
 import { SHIM_DIR, BUNDLE_PATH, DENO_BIN, FIFO_FD3, FIFO_FD4 } from './constants.mjs';
-import { createFetchHandler } from './handlers/fetch.mjs';
+import { setupFetchFixtures, cleanupFetchFixtures, handleFetch } from './handlers/fetch.mjs';
 import { createLdapHandler } from './handlers/ldap.mjs';
 import { createRPCDispatcher } from './rpc.mjs';
 
@@ -16,9 +16,9 @@ export async function runScenario(scenario) {
   writeFileSync(BUNDLE_PATH, script);
 
   // Create handlers from fixtures
-  const fetchHandler = createFetchHandler(fixtures.http || null);
+  setupFetchFixtures(fixtures.http || null);
   const ldapHandler = createLdapHandler(fixtures.ldap || null);
-  const dispatch = createRPCDispatcher(fetchHandler, ldapHandler);
+  const dispatch = createRPCDispatcher(handleFetch, ldapHandler);
 
   // Create fresh fifos for this scenario
   const fd3Path = `${FIFO_FD3}.${scenarioCount}`;
@@ -84,7 +84,7 @@ export async function runScenario(scenario) {
   // Handle RPC requests from fd4 and write responses to fd3
   const rpcReader = createInterface({ input: fd4ReadStream });
 
-  rpcReader.on('line', (line) => {
+  rpcReader.on('line', async (line) => {
     if (!line.trim()) return;
 
     let request;
@@ -101,7 +101,7 @@ export async function runScenario(scenario) {
       process.stderr.write(`[rpc] ${method}(${JSON.stringify(params).slice(0, 200)})\n`);
     }
 
-    const result = dispatch(method, params || {});
+    const result = await dispatch(method, params || {});
 
     let response;
     if (result && result.error) {
@@ -165,9 +165,10 @@ export async function runScenario(scenario) {
     });
   });
 
-  // Cleanup fifos
+  // Cleanup fifos and fixtures
   try { unlinkSync(fd3Path); } catch {}
   try { unlinkSync(fd4Path); } catch {}
+  cleanupFetchFixtures();
 
   return result;
 }

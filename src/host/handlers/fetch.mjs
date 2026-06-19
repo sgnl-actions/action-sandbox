@@ -1,33 +1,80 @@
-export function createFetchHandler(fixtures) {
-  const queue = fixtures ? [...fixtures] : [];
+let fixtureMap = new Map(); // key: "METHOD url" -> array of {response, persist}
 
-  return function handleFetch(params) {
-    const { url, method = 'GET' } = params;
+/**
+ * Set up in-memory fixture interceptors from fixture data.
+ */
+export function setupFetchFixtures(fixtures) {
+  fixtureMap = new Map();
 
-    if (!url) {
-      return { error: { code: -32602, message: 'Missing required parameter: url' } };
+  if (!fixtures || fixtures.length === 0) return;
+
+  for (const fixture of fixtures) {
+    const { request, response } = fixture;
+    const method = request.method.toUpperCase();
+    const key = `${method} ${request.url}`;
+
+    const statusCode = response.statusCode || response.status || 200;
+    const entry = {
+      response,
+      statusCode,
+      persist: !!(response.networkError || statusCode >= 400),
+    };
+
+    if (!fixtureMap.has(key)) {
+      fixtureMap.set(key, []);
     }
+    fixtureMap.get(key).push(entry);
+  }
+}
 
-    const idx = queue.findIndex(
-      (f) => f.request.method === method && f.request.url === url,
-    );
+/**
+ * Clean up all fixture interceptors.
+ */
+export function cleanupFetchFixtures() {
+  fixtureMap = new Map();
+}
 
-    if (idx !== -1) {
-      const fixture = queue.splice(idx, 1)[0];
+/**
+ * Handle a fetch RPC request by matching against fixtures directly.
+ */
+export function handleFetch(params) {
+  const { url, method = 'GET', headers = {}, body } = params;
 
-      if (fixture.response.networkError) {
-        return { error: { code: -32000, message: 'Network error: connection refused' } };
-      }
+  if (!url) {
+    return { error: { code: -32602, message: 'Missing required parameter: url' } };
+  }
 
-      return {
-        status: fixture.response.statusCode || fixture.response.status || 200,
-        headers: fixture.response.headers || {},
-        body: fixture.response.body
-          ? Buffer.from(fixture.response.body).toString('base64')
-          : undefined,
-      };
-    }
+  const key = `${method.toUpperCase()} ${url}`;
+  const entries = fixtureMap.get(key);
 
-    return { error: { code: -32001, message: `No fixture matched: ${method} ${url}` } };
+  if (!entries || entries.length === 0) {
+    return { error: { code: -32000, message: `No fixture matched: ${key}` } };
+  }
+
+  const entry = entries[0];
+
+  // Consume non-persistent fixtures (success responses)
+  if (!entry.persist) {
+    entries.shift();
+  }
+
+  const { response } = entry;
+
+  if (response.networkError) {
+    return { error: { code: -32000, message: 'Network error: connection refused' } };
+  }
+
+  // Encode body as base64 if present
+  let respBody;
+  if (response.body) {
+    respBody = typeof response.body === 'string'
+      ? Buffer.from(response.body).toString('base64')
+      : Buffer.from(JSON.stringify(response.body)).toString('base64');
+  }
+
+  return {
+    status: entry.statusCode,
+    headers: response.headers || {},
+    body: respBody,
   };
 }

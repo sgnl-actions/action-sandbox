@@ -5,6 +5,16 @@ import type { RPCResponse, FetchParams, FetchResult, SignJWTParams, SignJWTResul
 
 type RpcCallFn = (method: string, params: Record<string, unknown>) => Promise<RPCResponse>;
 
+const HTTP_STATUS_TEXT: Record<number, string> = {
+  200: "OK", 201: "Created", 202: "Accepted", 204: "No Content",
+  301: "Moved Permanently", 302: "Found", 304: "Not Modified",
+  400: "Bad Request", 401: "Unauthorized", 403: "Forbidden", 404: "Not Found",
+  405: "Method Not Allowed", 408: "Request Timeout", 409: "Conflict",
+  429: "Too Many Requests",
+  500: "Internal Server Error", 502: "Bad Gateway", 503: "Service Unavailable",
+  504: "Gateway Timeout",
+};
+
 /** Create a proxied fetch that routes HTTP through the Go worker. */
 export function createProxiedFetch(rpcCall: RpcCallFn, metadata: Record<string, unknown>) {
   return async function proxiedFetch(
@@ -61,6 +71,7 @@ export function createProxiedFetch(rpcCall: RpcCallFn, metadata: Record<string, 
 
     return new Response(respBody, {
       status: result.status,
+      statusText: HTTP_STATUS_TEXT[result.status] || "",
       headers: result.headers as Record<string, string> | undefined,
     });
   };
