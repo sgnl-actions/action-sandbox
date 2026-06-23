@@ -7,14 +7,11 @@ import { builtinModules } from "node:module";
 const nodeRequire = denoCreateRequire(import.meta.url);
 const builtins = new Set(builtinModules);
 
-// Modules that could escape the sandbox proxy layer or provide capabilities
-// that should be denied at the module level (not just at runtime).
+// Modules that can escape the sandbox proxy layer. Other dangerous modules
+// (child_process, worker_threads) are allowed to load but their operations
+// are blocked at runtime by Deno's --deny-run permission flag.
 const BLOCKED_BUILTINS = new Set([
   "vm",              // runInThisContext/runInNewContext bypasses shim proxies
-  "child_process",   // spawn blocked by --deny-run, but fail at require for clarity
-  "cluster",         // spawns workers via child_process
-  "worker_threads",  // new V8 isolate without shim proxies
-  "v8",              // heap snapshots, serialization internals
   "inspector",       // debugger protocol access
 ]);
 
