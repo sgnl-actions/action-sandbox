@@ -261,4 +261,3 @@ main().catch((e) => {
   writeResult({ success: false, error: `Shim fatal error: ${(e as Error).message}` });
   Deno.exit(1);
 });
-
