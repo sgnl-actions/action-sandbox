@@ -1,7 +1,10 @@
 import { spawn, execSync } from 'node:child_process';
 import { createInterface } from 'node:readline';
 import { writeFileSync, unlinkSync, createReadStream, createWriteStream, open as fsOpen } from 'node:fs';
-import { SHIM_DIR, BUNDLE_PATH, DENO_BIN, FIFO_FD3, FIFO_FD4 } from './constants.mjs';
+import {
+  SHIM_DIR, BUNDLE_PATH, DENO_BIN, FIFO_FD3, FIFO_FD4,
+  MAX_RPC_REQUEST_BYTES, MAX_STDOUT_BYTES, MAX_LOG_LINES, MAX_LOG_LINE_BYTES,
+} from './constants.mjs';
 import { setupFetchFixtures, cleanupFetchFixtures, handleFetch } from './handlers/fetch.mjs';
 import { createLdapHandler } from './handlers/ldap.mjs';
 import { createRPCDispatcher } from './rpc.mjs';
@@ -87,6 +90,11 @@ export async function runScenario(scenario) {
   rpcReader.on('line', (line) => {
     if (!line.trim()) return;
 
+    if (Buffer.byteLength(line) > MAX_RPC_REQUEST_BYTES) {
+      fd3WriteStream.write(JSON.stringify({ jsonrpc: '2.0', id: null, error: { code: -32600, message: `RPC request exceeds ${MAX_RPC_REQUEST_BYTES} byte limit` } }) + '\n');
+      return;
+    }
+
     let request;
     try {
       request = JSON.parse(line);
@@ -113,16 +121,36 @@ export async function runScenario(scenario) {
     fd3WriteStream.write(JSON.stringify(response) + '\n');
   });
 
-  // Collect stdout (result) and stderr (logs)
+  // Collect stdout (result) and stderr (logs) with size limits
   let stdout = '';
+  let stdoutBytes = 0;
+  let stdoutTruncated = false;
+
   let stderr = '';
+  let logLines = 0;
 
   child.stdout.setEncoding('utf8');
-  child.stdout.on('data', (chunk) => { stdout += chunk; });
+  child.stdout.on('data', (chunk) => {
+    if (stdoutTruncated) return;
+    stdoutBytes += Buffer.byteLength(chunk);
+    if (stdoutBytes > MAX_STDOUT_BYTES) {
+      stdoutTruncated = true;
+      return;
+    }
+    stdout += chunk;
+  });
 
   child.stderr.setEncoding('utf8');
   child.stderr.on('data', (chunk) => {
-    stderr += chunk;
+    // Enforce per-line and total line limits on log output
+    const lines = chunk.split('\n');
+    for (const line of lines) {
+      if (!line) continue;
+      if (logLines >= MAX_LOG_LINES) break;
+      if (Buffer.byteLength(line) > MAX_LOG_LINE_BYTES) continue;
+      logLines++;
+      stderr += line + '\n';
+    }
     if (verbose) process.stderr.write(chunk);
   });
 
@@ -144,6 +172,11 @@ export async function runScenario(scenario) {
       rpcReader.close();
       try { fd3WriteStream.end(); } catch {}
       try { fd4ReadStream.destroy(); } catch {}
+
+      if (stdoutTruncated) {
+        resolve({ success: false, error: `Result output exceeded ${MAX_STDOUT_BYTES} byte limit` });
+        return;
+      }
 
       const trimmed = stdout.trim();
       if (!trimmed) {
