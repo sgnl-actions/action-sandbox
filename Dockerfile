@@ -19,7 +19,8 @@ COPY shim/ /app/deno/
 
 # Cache Deno dependencies (node: builtins need type resolution).
 # Use --no-check to skip type checking — we only need runtime modules cached.
-RUN deno cache --no-check /app/deno/mod.ts || true
+# Must succeed: the container runs Deno with --cached-only at runtime.
+RUN deno cache --no-check /app/deno/mod.ts
 
 COPY src/host/ /app/host/
 
