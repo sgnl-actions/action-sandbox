@@ -232,6 +232,14 @@ export function createLdaptsProxy(rpcCall: RpcCallFn, metadata: Record<string, u
   }
 
   // LDAP filter classes — serialize to RFC 4515 filter strings for search operations.
+
+  /** Escape special characters per RFC 4515 §3: \, *, (, ), NUL */
+  function escapeFilterValue(value: string): string {
+    return value.replace(/[\\*()\\x00]/g, (c) =>
+      "\\" + c.charCodeAt(0).toString(16).padStart(2, "0"),
+    );
+  }
+
   class EqualityFilter {
     attribute: string;
     value: string | Uint8Array;
@@ -244,7 +252,7 @@ export function createLdaptsProxy(rpcCall: RpcCallFn, metadata: Record<string, u
         const hex = Buffer.from(this.value).toString("hex").replace(/../g, "\\$&");
         return `(${this.attribute}=${hex})`;
       }
-      return `(${this.attribute}=${this.value})`;
+      return `(${this.attribute}=${escapeFilterValue(String(this.value))})`;
     }
   }
 
@@ -280,7 +288,14 @@ export function createLdaptsProxy(rpcCall: RpcCallFn, metadata: Record<string, u
       this.final = options.final || "";
     }
     toString(): string {
-      return `(${this.attribute}=${this.initial}*${this.any.join("*")}*${this.final})`;
+      const parts = [
+        escapeFilterValue(this.initial),
+        "*",
+        this.any.map(s => escapeFilterValue(s)).join("*"),
+        "*",
+        escapeFilterValue(this.final),
+      ];
+      return `(${this.attribute}=${parts.join("")})`;
     }
   }
 
