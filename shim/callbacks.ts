@@ -2,7 +2,7 @@
 
 import { Buffer } from "node:buffer";
 import { Readable, Writable } from "node:stream";
-import type { RPCResponse, FetchParams, FetchResult, SignJWTParams, SignJWTResult, LdapParams, LdapResult, HttpResult } from "./types.ts";
+import type { RPCResponse, FetchParams, FetchResult, SignJWTParams, SignJWTResult, LdapParams, LdapResult } from "./types.ts";
 
 type RpcCallFn = (method: string, params: Record<string, unknown>) => Promise<RPCResponse>;
 
@@ -342,12 +342,14 @@ class ClientRequest extends Writable {
   #options: Record<string, unknown>;
   #body: Buffer[] = [];
   #rpcCall: RpcCallFn;
+  #metadata: Record<string, unknown>;
   #defaultProtocol: string;
 
-  constructor(options: Record<string, unknown>, rpcCall: RpcCallFn, defaultProtocol: string) {
+  constructor(options: Record<string, unknown>, rpcCall: RpcCallFn, metadata: Record<string, unknown>, defaultProtocol: string) {
     super();
     this.#options = options;
     this.#rpcCall = rpcCall;
+    this.#metadata = metadata;
     this.#defaultProtocol = defaultProtocol;
   }
 
@@ -382,27 +384,26 @@ class ClientRequest extends Writable {
       ? Buffer.concat(this.#body).toString("base64")
       : undefined;
 
-    this.#rpcCall("http", {
-      protocol,
-      hostname: hostOnly,
-      port,
-      path,
-      method,
-      headers,
-      body,
-    })
+    const portPart = port ? `:${port}` : "";
+    const url = `${protocol}//${hostOnly}${portPart}${path}`;
+
+    const params: Record<string, unknown> = { url, method, headers };
+    if (body !== undefined) params.body = body;
+    if (this.#metadata.connector_id) params.connector_id = this.#metadata.connector_id;
+
+    this.#rpcCall("fetch", params)
       .then((resp) => {
         if (resp.error) {
           this.emit("error", new Error(resp.error.message));
           return;
         }
 
-        const result = resp.result as unknown as HttpResult;
+        const result = resp.result as unknown as FetchResult;
         const respBody = result.body
           ? Buffer.from(result.body, "base64")
           : Buffer.alloc(0);
 
-        const msg = new IncomingMessage(result.status, result.headers || {}, respBody);
+        const msg = new IncomingMessage(result.status, (result.headers || {}) as Record<string, string>, respBody);
         this.emit("response", msg);
       })
       .catch((err) => {
@@ -423,8 +424,8 @@ class ClientRequest extends Writable {
   flushHeaders(): void {}
 }
 
-/** Create a proxied http/https module that routes through the "http" RPC method. */
-export function createProxiedHttp(rpcCall: RpcCallFn, defaultProtocol = "https:") {
+/** Create a proxied http/https module that routes through the "fetch" RPC method. */
+export function createProxiedHttp(rpcCall: RpcCallFn, metadata: Record<string, unknown>, defaultProtocol = "https:") {
   function request(urlOrOptions: string | URL | Record<string, unknown>, optionsOrCb?: Record<string, unknown> | ((res: IncomingMessage) => void), cb?: (res: IncomingMessage) => void) {
     let options: Record<string, unknown>;
 
@@ -445,7 +446,7 @@ export function createProxiedHttp(rpcCall: RpcCallFn, defaultProtocol = "https:"
       if (typeof optionsOrCb === "function") cb = optionsOrCb;
     }
 
-    const req = new ClientRequest(options, rpcCall, defaultProtocol);
+    const req = new ClientRequest(options, rpcCall, metadata, defaultProtocol);
     if (cb) req.on("response", cb);
     return req;
   }

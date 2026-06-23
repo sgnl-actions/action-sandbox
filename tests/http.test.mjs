@@ -1,7 +1,6 @@
 import { describe, it, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
-import { setupFetchFixtures, cleanupFetchFixtures } from '../src/host/handlers/fetch.mjs';
-import { handleHttp } from '../src/host/handlers/http.mjs';
+import { setupFetchFixtures, cleanupFetchFixtures, handleFetch } from '../src/host/handlers/fetch.mjs';
 
 describe('http handler', () => {
   beforeEach(() => {
@@ -9,9 +8,9 @@ describe('http handler', () => {
   });
 
   it('returns error when hostname is missing', () => {
-    const result = handleHttp({ method: 'GET', path: '/' });
+    const result = handleFetch({ method: 'GET' });
     assert.deepEqual(result, {
-      error: { code: -32602, message: 'Missing required parameter: hostname' },
+      error: { code: -32602, message: 'Missing required parameter: url' },
     });
   });
 
@@ -23,10 +22,8 @@ describe('http handler', () => {
       },
     ]);
 
-    const result = handleHttp({
-      protocol: 'https:',
-      hostname: 'api.example.com',
-      path: '/v1/users',
+    const result = handleFetch({
+      url: 'https://api.example.com/v1/users',
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: Buffer.from('{"name":"test"}').toString('base64'),
@@ -45,7 +42,7 @@ describe('http handler', () => {
       },
     ]);
 
-    const result = handleHttp({ hostname: 'example.com', path: '/' });
+    const result = handleFetch({ url: 'https://example.com/', method: 'GET' });
     assert.equal(result.status, 200);
   });
 
@@ -57,11 +54,9 @@ describe('http handler', () => {
       },
     ]);
 
-    const result = handleHttp({
-      protocol: 'http:',
-      hostname: 'localhost',
-      port: 8080,
-      path: '/health',
+    const result = handleFetch({
+      url: 'http://localhost:8080/health',
+      method: 'GET',
     });
 
     assert.equal(result.status, 200);
@@ -70,9 +65,9 @@ describe('http handler', () => {
   it('returns no fixture matched error', () => {
     setupFetchFixtures([]);
 
-    const result = handleHttp({
-      hostname: 'unknown.example.com',
-      path: '/missing',
+    const result = handleFetch({
+      url: 'https://unknown.example.com/missing',
+      method: 'GET',
     });
 
     assert.ok(result.error);
@@ -87,11 +82,11 @@ describe('http handler', () => {
       },
     ]);
 
-    const r1 = handleHttp({ hostname: 'iam.example.com', path: '/', method: 'POST' });
+    const r1 = handleFetch({ url: 'https://iam.example.com/', method: 'POST' });
     assert.equal(r1.status, 401);
 
     // Should still match on retry
-    const r2 = handleHttp({ hostname: 'iam.example.com', path: '/', method: 'POST' });
+    const r2 = handleFetch({ url: 'https://iam.example.com/', method: 'POST' });
     assert.equal(r2.status, 401);
   });
 });

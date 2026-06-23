@@ -11,8 +11,6 @@ export type {
   SignJWTResult,
   LdapParams,
   LdapResult,
-  HttpParams,
-  HttpResult,
 } from "./sandboxrpc.gen.ts";
 
 export { RPCErrorCodes } from "./sandboxrpc.gen.ts";

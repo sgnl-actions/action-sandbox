@@ -95,8 +95,8 @@ async function main(): Promise<void> {
   const proxiedFetch = createProxiedFetch(ipc.rpcCall, metadata);
   const proxiedCrypto = createProxiedCrypto(ipc.rpcCall);
   const ldaptsProxy = createLdaptsProxy(ipc.rpcCall, metadata);
-  const proxiedHttp = createProxiedHttp(ipc.rpcCall, "http:");
-  const proxiedHttps = createProxiedHttp(ipc.rpcCall, "https:");
+  const proxiedHttp = createProxiedHttp(ipc.rpcCall, metadata, "http:");
+  const proxiedHttps = createProxiedHttp(ipc.rpcCall, metadata, "https:");
 
   // Restricted process object matching sandbox.js contract (needed by AWS SDK and others).
   const processShim = {
