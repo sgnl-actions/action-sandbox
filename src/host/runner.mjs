@@ -42,6 +42,7 @@ export async function runScenario(scenario) {
     `--allow-read=/dev/fd/3,${SHIM_DIR},${BUNDLE_PATH}`,
     '--allow-write=/dev/fd/4',
     '--no-prompt',
+    '--cached-only',
     '--v8-flags=--max-old-space-size=64',
     `${SHIM_DIR}/mod.ts`,
   ].join(' ');
