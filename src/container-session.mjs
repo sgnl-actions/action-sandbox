@@ -13,6 +13,7 @@ export class ContainerSession {
   #iterator = null;
   #image;
   #started = false;
+  #stderr = [];
 
   constructor({ image } = {}) {
     this.#image = image || process.env.SANDBOX_IMAGE || DEFAULT_IMAGE;
@@ -28,9 +29,9 @@ export class ContainerSession {
       stdio: ['pipe', 'pipe', 'pipe'],
     });
 
-    // Drain container stderr to prevent backpressure
+    // Collect container stderr so it can be surfaced per-scenario
     this.#process.stderr.setEncoding('utf8');
-    this.#process.stderr.on('data', () => {});
+    this.#process.stderr.on('data', (chunk) => { this.#stderr.push(chunk); });
 
     const rl = createInterface({ input: this.#process.stdout });
     this.#iterator = rl[Symbol.asyncIterator]();
@@ -67,6 +68,9 @@ export class ContainerSession {
       throw new Error('ContainerSession not started. Call start() first.');
     }
 
+    // Clear stderr buffer for this scenario
+    this.#stderr.length = 0;
+
     const message = { type: 'run', ...scenario };
     this.#process.stdin.write(JSON.stringify(message) + '\n');
 
@@ -74,10 +78,20 @@ export class ContainerSession {
     const { value, done } = await this.#iterator.next();
 
     if (done || !value) {
-      throw new Error('Container closed stdout without returning a result');
+      const stderr = this.#stderr.join('');
+      throw new Error('Container closed stdout without returning a result' +
+        (stderr ? `\nstderr: ${stderr}` : ''));
     }
 
-    return JSON.parse(value);
+    const result = JSON.parse(value);
+
+    // Attach stderr when verbose is requested or when the scenario failed
+    const stderr = this.#stderr.join('');
+    if (stderr && (scenario.verbose || !result.success)) {
+      result.stderr = stderr;
+    }
+
+    return result;
   }
 
   /**
