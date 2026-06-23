@@ -45,7 +45,6 @@ export class ContainerSession {
         reject(new Error(`Failed to start container: ${err.message}`));
       });
       this.#process.on('close', (code) => {
-        if (!this.#started) return;
         clearTimeout(timer);
         if (code !== 0 && code !== null) {
           reject(new Error(`Container exited immediately with code ${code}`));
