@@ -1,0 +1,328 @@
+{
+  "openrpc": "1.3.2",
+  "info": {
+    "title": "SGNL Sandbox RPC",
+    "version": "1.0.0",
+    "description": "Transport-agnostic JSON-RPC 2.0 protocol for communication between the sandbox host and the sandbox subprocess. The sandbox is the caller; the host is the responder."
+  },
+  "methods": [
+    {
+      "name": "fetch",
+      "summary": "Perform an HTTP request on behalf of the sandbox.",
+      "params": [
+        {
+          "name": "url",
+          "required": true,
+          "schema": { "type": "string", "format": "uri" }
+        },
+        {
+          "name": "method",
+          "required": false,
+          "schema": {
+            "type": "string",
+            "enum": ["GET", "POST", "PUT", "PATCH", "DELETE", "HEAD"],
+            "default": "GET"
+          }
+        },
+        {
+          "name": "headers",
+          "required": false,
+          "schema": {
+            "type": "object",
+            "additionalProperties": { "type": "string" }
+          }
+        },
+        {
+          "name": "body",
+          "required": false,
+          "schema": {
+            "type": "string",
+            "description": "Base64-encoded request body."
+          }
+        },
+        {
+          "name": "connector_id",
+          "required": false,
+          "schema": {
+            "type": "string",
+            "description": "Connector ID for routing through the connector service."
+          }
+        }
+      ],
+      "result": {
+        "name": "FetchResult",
+        "schema": {
+          "type": "object",
+          "required": ["status"],
+          "properties": {
+            "status": { "type": "integer", "description": "HTTP status code." },
+            "headers": {
+              "type": "object",
+              "additionalProperties": { "type": "string" },
+              "description": "Response headers."
+            },
+            "body": {
+              "type": "string",
+              "description": "Base64-encoded response body."
+            }
+          }
+        }
+      },
+      "errors": [
+        { "$ref": "#/components/errors/NetworkError" },
+        { "$ref": "#/components/errors/UpstreamError" },
+        { "$ref": "#/components/errors/ConnectorError" }
+      ]
+    },
+    {
+      "name": "signJWT",
+      "summary": "Sign a JWT payload via the crypto service.",
+      "params": [
+        {
+          "name": "payload",
+          "required": true,
+          "schema": {
+            "type": "object",
+            "description": "JWT claims to sign."
+          }
+        },
+        {
+          "name": "options",
+          "required": false,
+          "schema": {
+            "type": "object",
+            "properties": {
+              "typ": {
+                "type": "string",
+                "enum": ["JWT", "secevent+jwt"],
+                "description": "JWT type header value."
+              }
+            }
+          }
+        }
+      ],
+      "result": {
+        "name": "SignJWTResult",
+        "schema": {
+          "type": "object",
+          "required": ["jwt"],
+          "properties": {
+            "jwt": {
+              "type": "string",
+              "description": "The signed JWT string."
+            }
+          }
+        }
+      },
+      "errors": [
+        { "$ref": "#/components/errors/InvalidParams" },
+        { "$ref": "#/components/errors/UpstreamError" }
+      ]
+    },
+    {
+      "name": "ldap",
+      "summary": "Perform an LDAP operation on behalf of the sandbox.",
+      "params": [
+        {
+          "name": "operation",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "enum": ["search", "add", "modify", "delete", "modifyDN"]
+          }
+        },
+        {
+          "name": "url",
+          "required": true,
+          "schema": {
+            "type": "string",
+            "description": "LDAP server URL (e.g., ldaps://ldap.example.com:636)."
+          }
+        },
+        {
+          "name": "bindDN",
+          "required": true,
+          "schema": { "type": "string" }
+        },
+        {
+          "name": "bindPassword",
+          "required": true,
+          "schema": { "type": "string" }
+        },
+        {
+          "name": "baseDN",
+          "required": false,
+          "schema": {
+            "type": "string",
+            "description": "Base DN for search operations."
+          }
+        },
+        {
+          "name": "scope",
+          "required": false,
+          "schema": {
+            "type": "string",
+            "enum": ["base", "one", "sub"],
+            "default": "sub"
+          }
+        },
+        {
+          "name": "filter",
+          "required": false,
+          "schema": {
+            "type": "string",
+            "default": "(objectClass=*)"
+          }
+        },
+        {
+          "name": "attributes",
+          "required": false,
+          "schema": {
+            "type": "array",
+            "items": { "type": "string" },
+            "description": "Attributes to return in search results."
+          }
+        },
+        {
+          "name": "sizeLimit",
+          "required": false,
+          "schema": {
+            "type": "integer",
+            "default": 0,
+            "description": "Maximum entries to return (0 = no limit)."
+          }
+        },
+        {
+          "name": "timeLimit",
+          "required": false,
+          "schema": {
+            "type": "integer",
+            "default": 0,
+            "description": "Maximum time in seconds (0 = no limit)."
+          }
+        },
+        {
+          "name": "dn",
+          "required": false,
+          "schema": {
+            "type": "string",
+            "description": "Target DN for add/modify/delete/modifyDN operations."
+          }
+        },
+        {
+          "name": "newDN",
+          "required": false,
+          "schema": {
+            "type": "string",
+            "description": "New DN for modifyDN operation."
+          }
+        },
+        {
+          "name": "changes",
+          "required": false,
+          "schema": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["operation", "modification"],
+              "properties": {
+                "operation": {
+                  "type": "string",
+                  "enum": ["add", "delete", "replace"]
+                },
+                "modification": {
+                  "type": "object",
+                  "required": ["type", "values"],
+                  "properties": {
+                    "type": { "type": "string" },
+                    "values": { "type": "array", "items": { "type": "string" } }
+                  }
+                }
+              }
+            },
+            "description": "Changes for modify operations."
+          }
+        },
+        {
+          "name": "attributes_entry",
+          "required": false,
+          "schema": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": ["type", "values"],
+              "properties": {
+                "type": { "type": "string" },
+                "values": { "type": "array", "items": { "type": "string" } }
+              }
+            },
+            "description": "Attributes for add operations."
+          }
+        },
+        {
+          "name": "connector_id",
+          "required": false,
+          "schema": {
+            "type": "string",
+            "description": "Connector ID for routing through the connector service."
+          }
+        }
+      ],
+      "result": {
+        "name": "LDAPResult",
+        "schema": {
+          "type": "object",
+          "properties": {
+            "searchEntries": {
+              "type": "array",
+              "items": { "type": "object" },
+              "description": "Search result entries."
+            },
+            "searchReferences": {
+              "type": "array",
+              "items": { "type": "string" },
+              "description": "Search result references."
+            },
+            "success": {
+              "type": "boolean",
+              "description": "Operation success (for non-search operations)."
+            }
+          }
+        }
+      },
+      "errors": [
+        { "$ref": "#/components/errors/InvalidParams" },
+        { "$ref": "#/components/errors/NetworkError" },
+        { "$ref": "#/components/errors/ConnectorError" }
+      ]
+    }
+  ],
+  "components": {
+    "errors": {
+      "InvalidRequest": {
+        "code": -32600,
+        "message": "Invalid request"
+      },
+      "MethodNotFound": {
+        "code": -32601,
+        "message": "Method not found"
+      },
+      "InvalidParams": {
+        "code": -32602,
+        "message": "Invalid params"
+      },
+      "NetworkError": {
+        "code": -32000,
+        "message": "Network error (connection refused, DNS, timeout)"
+      },
+      "UpstreamError": {
+        "code": -32001,
+        "message": "Non-2xx response from internal service"
+      },
+      "ConnectorError": {
+        "code": -32002,
+        "message": "Connector service failure"
+      }
+    }
+  }
+}

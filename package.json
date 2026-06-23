@@ -15,8 +15,7 @@
   },
   "files": [
     "bin/",
-    "src/",
-    "shim/"
+    "src/"
   ],
   "scripts": {
     "test": "node --test tests/*.test.mjs"
@@ -38,10 +37,6 @@
   "bugs": {
     "url": "https://github.com/sgnl-actions/action-sandbox/issues"
   },
-  "dependencies": {
-    "ldapts": "^4.2.6"
-  },
-  "devDependencies": {
-    "nock": "^14.0.0"
-  }
+  "dependencies": {},
+  "devDependencies": {}
 }

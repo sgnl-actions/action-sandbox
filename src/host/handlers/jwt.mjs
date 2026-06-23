@@ -11,36 +11,24 @@ function base64url(data) {
   return str.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 }
 
-/**
- * signJWT handler — RS256 signing with an ephemeral test key (generated at startup).
- * Receives: { payload, options }
- * Returns:  { token }
- */
-export async function handleSignJWT(params) {
+export function signJWT(params) {
   const { payload, options = {} } = params;
 
   if (!payload || typeof payload !== 'object') {
     return { error: { code: -32602, message: 'Invalid params: payload must be a non-null object' } };
   }
 
-  const header = {
-    alg: 'RS256',
-    typ: options.typ || 'JWT',
-  };
-
+  const header = { alg: 'RS256', typ: options.typ || 'JWT' };
   const now = Math.floor(Date.now() / 1000);
   const fullPayload = { iat: now, ...payload };
 
   const headerB64 = base64url(Buffer.from(JSON.stringify(header)).toString('base64'));
   const payloadB64 = base64url(Buffer.from(JSON.stringify(fullPayload)).toString('base64'));
-
   const signingInput = `${headerB64}.${payloadB64}`;
 
   const sign = createSign('RSA-SHA256');
   sign.update(signingInput);
   const signature = base64url(sign.sign(privateKey, 'base64'));
 
-  const token = `${signingInput}.${signature}`;
-
-  return { token };
+  return { jwt: `${signingInput}.${signature}` };
 }

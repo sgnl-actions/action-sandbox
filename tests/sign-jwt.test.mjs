@@ -1,38 +1,37 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { handleSignJWT } from '../src/handlers/sign-jwt.mjs';
-import { createVerify, createPublicKey } from 'node:crypto';
+import { signJWT } from '../src/host/handlers/jwt.mjs';
 
 describe('signJWT handler', () => {
-  it('returns error when payload is missing', async () => {
-    const result = await handleSignJWT({});
+  it('returns error when payload is missing', () => {
+    const result = signJWT({});
     assert.deepEqual(result, {
       error: { code: -32602, message: 'Invalid params: payload must be a non-null object' },
     });
   });
 
-  it('returns error when payload is null', async () => {
-    const result = await handleSignJWT({ payload: null });
+  it('returns error when payload is null', () => {
+    const result = signJWT({ payload: null });
     assert.deepEqual(result, {
       error: { code: -32602, message: 'Invalid params: payload must be a non-null object' },
     });
   });
 
-  it('returns error when payload is a string', async () => {
-    const result = await handleSignJWT({ payload: 'not an object' });
+  it('returns error when payload is a string', () => {
+    const result = signJWT({ payload: 'not an object' });
     assert.deepEqual(result, {
       error: { code: -32602, message: 'Invalid params: payload must be a non-null object' },
     });
   });
 
-  it('signs a JWT with RS256', async () => {
-    const result = await handleSignJWT({
+  it('signs a JWT with RS256', () => {
+    const result = signJWT({
       payload: { sub: 'user123', aud: 'https://example.com' },
       options: {},
     });
 
-    assert.ok(result.token);
-    const parts = result.token.split('.');
+    assert.ok(result.jwt);
+    const parts = result.jwt.split('.');
     assert.equal(parts.length, 3);
 
     // Decode header
@@ -44,27 +43,25 @@ describe('signJWT handler', () => {
     const payload = JSON.parse(Buffer.from(parts[1], 'base64url').toString());
     assert.equal(payload.sub, 'user123');
     assert.equal(payload.aud, 'https://example.com');
-    assert.ok(payload.iat); // iat should be set
+    assert.ok(payload.iat);
   });
 
-  it('respects custom typ option', async () => {
-    const result = await handleSignJWT({
+  it('respects custom typ option', () => {
+    const result = signJWT({
       payload: { sub: 'user123' },
       options: { typ: 'secevent+jwt' },
     });
 
-    const parts = result.token.split('.');
+    const parts = result.jwt.split('.');
     const header = JSON.parse(Buffer.from(parts[0], 'base64url').toString());
     assert.equal(header.typ, 'secevent+jwt');
   });
 
-  it('produces a valid three-part JWT', async () => {
-    const result = await handleSignJWT({
-      payload: { foo: 'bar' },
-    });
+  it('produces a valid three-part JWT with base64url encoding', () => {
+    const result = signJWT({ payload: { foo: 'bar' } });
 
-    // Verify it's valid base64url in all three parts
-    const parts = result.token.split('.');
+    const parts = result.jwt.split('.');
+    assert.equal(parts.length, 3);
     for (const part of parts) {
       assert.match(part, /^[A-Za-z0-9_-]+$/);
     }

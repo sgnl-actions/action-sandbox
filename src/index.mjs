@@ -1,10 +1,11 @@
 import { resolve } from 'node:path';
-import { existsSync } from 'node:fs';
-import { spawnDeno } from './spawn-deno.mjs';
-import { createSandboxHost } from './sandbox-host.mjs';
+import { readFileSync, existsSync } from 'node:fs';
+import { ContainerSession, checkDocker } from './container-session.mjs';
+
+export { ContainerSession, checkDocker } from './container-session.mjs';
 
 /**
- * Run a SGNL action bundle in the Deno sandbox.
+ * Run a SGNL action bundle in the Deno sandbox via the container.
  *
  * @param {object} options
  * @param {string} options.bundle - Path to the bundled action JS file
@@ -14,8 +15,10 @@ import { createSandboxHost } from './sandbox-host.mjs';
  * @param {string} [options.handler='invoke'] - Handler to call (invoke|error|halt)
  * @param {number} [options.timeout=30000] - Timeout in milliseconds
  * @param {boolean} [options.verbose=false] - Show action stderr output
- * @param {Array|null} [options.ldapFixtures=null] - LDAP fixtures (disables real LDAP)
- * @returns {Promise<any>} The action result
+ * @param {Array|null} [options.httpFixtures=null] - HTTP fixtures for the container host
+ * @param {Array|null} [options.ldapFixtures=null] - LDAP fixtures for the container host
+ * @param {ContainerSession} [options.session] - Shared container session (created if not provided)
+ * @returns {Promise<object>} The action result
  */
 export async function runAction({
   bundle,
@@ -25,7 +28,9 @@ export async function runAction({
   handler = 'invoke',
   timeout = 30000,
   verbose = false,
+  httpFixtures = null,
   ldapFixtures = null,
+  session = null,
 } = {}) {
   const bundlePath = resolve(bundle);
 
@@ -33,75 +38,48 @@ export async function runAction({
     throw new Error(`Bundle not found: ${bundlePath}`);
   }
 
-  // Spawn Deno with sandbox flags
-  const { process: child, hostWrite, hostRead } = spawnDeno(bundlePath);
+  // Read the bundle content — container receives it inline
+  const script = readFileSync(bundlePath, 'utf8');
 
-  // Create sandbox host: reads RPC requests from child stdout, writes responses to child stdin
-  const sandbox = createSandboxHost(hostRead, hostWrite, { verbose, ldapFixtures });
+  // If no session provided, create a one-shot session
+  const ownSession = !session;
+  if (ownSession) {
+    session = new ContainerSession();
+    await session.start();
+  }
 
-  // Send init message to the shim
-  sandbox.sendInit({
-    handler,
-    params: inputs,
-    context: {
-      secrets,
-      environment,
-      crypto: {},
-    },
-  });
-
-  // Collect stderr for action logs
-  let stderr = '';
-  child.stderr.setEncoding('utf8');
-  child.stderr.on('data', (chunk) => {
-    stderr += chunk;
-    if (verbose) {
-      process.stderr.write(chunk);
-    }
-  });
-
-  // Wait for result with timeout
-  const result = await new Promise((resolvePromise, reject) => {
-    let timedOut = false;
-    const timer = setTimeout(() => {
-      timedOut = true;
-      child.kill('SIGTERM');
-      reject(new Error(`Action timed out after ${timeout}ms`));
-    }, timeout);
-
-    // The result comes through the sandbox host's resultPromise
-    sandbox.resultPromise
-      .then((resultJson) => {
-        if (timedOut) return;
-        clearTimeout(timer);
-        try {
-          const parsed = JSON.parse(resultJson);
-          if (parsed.error) {
-            reject(new Error(`Action error: ${parsed.error}`));
-          } else {
-            resolvePromise(parsed.result);
-          }
-        } catch (parseErr) {
-          reject(new Error(
-            `Failed to parse action output: ${parseErr.message}\nRaw output: ${resultJson}`
-          ));
-        }
-      })
-      .catch((err) => {
-        if (timedOut) return;
-        clearTimeout(timer);
-        reject(new Error(
-          `Action failed: ${err.message}` +
-          (stderr ? `\nStderr: ${stderr}` : '')
-        ));
-      });
-
-    child.on('error', (err) => {
-      if (timedOut) return;
-      clearTimeout(timer);
-      reject(new Error(`Failed to spawn Deno: ${err.message}`));
+  try {
+    const result = await session.run({
+      payload: {
+        script,
+        inputs,
+        secrets,
+        outputs: {},
+        environment,
+        data: {},
+        metadata: {},
+        timeout,
+      },
+      fixtures: {
+        http: httpFixtures || [],
+        ldap: ldapFixtures || [],
+      },
+      verbose,
     });
-  });
 
-  return result;
+    // Container returns { type: 'result', success, data?, error? }
+    if (result.type === 'error') {
+      throw new Error(`Container error: ${result.error}`);
+    }
+
+    if (!result.success) {
+      throw new Error(`Action failed: ${result.error || 'unknown error'}`);
+    }
+
+    return result.data;
+  } finally {
+    if (ownSession) {
+      await session.close();
+    }
+  }
 }
