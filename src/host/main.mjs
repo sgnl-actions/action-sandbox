@@ -10,12 +10,9 @@
 //   stdin  <- {"type":"done"}\n                                   (shutdown signal)
 
 import { createInterface } from 'node:readline';
-import { mkdirSync } from 'node:fs';
 import { runScenario } from './runner.mjs';
 
 async function main() {
-  mkdirSync('/tmp', { recursive: true });
-
   const rl = createInterface({ input: process.stdin });
 
   for await (const line of rl) {
