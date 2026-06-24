@@ -235,7 +235,7 @@ export function createLdaptsProxy(rpcCall: RpcCallFn, metadata: Record<string, u
 
   /** Escape special characters per RFC 4515 §3: \, *, (, ), NUL */
   function escapeFilterValue(value: string): string {
-    return value.replace(/[\\*()\\x00]/g, (c) =>
+    return value.replace(/[\\*()\x00]/g, (c) =>
       "\\" + c.charCodeAt(0).toString(16).padStart(2, "0"),
     );
   }
